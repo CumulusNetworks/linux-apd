@@ -866,6 +866,8 @@
 #define I210_I_PHY_ID        0x01410C00
 #define M88E1543_E_PHY_ID    0x01410EA0
 #define M88E1512_E_PHY_ID    0x01410DD0
+#define BCM54616_E_PHY_ID    0x03625D10
+#define BCM5461S_E_PHY_ID    0x002060C0
 
 /* M88E1000 Specific Registers */
 #define M88E1000_PHY_SPEC_CTRL     0x10  /* PHY Specific Control Register */

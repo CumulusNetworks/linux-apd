@@ -2037,6 +2037,41 @@ out:
 }
 
 /**
+ *  igb_get_phy_info_5461s - Retrieve 5461s PHY information
+ *  @hw: pointer to the HW structure
+ *
+ *  Read PHY status to determine if link is up.  If link is up, then
+ *  set/determine 10base-T extended distance and polarity correction.  Read
+ *  PHY port status to determine MDI/MDIx and speed.  Based on the speed,
+ *  determine on the cable length, local and remote receiver.
+ **/
+s32 igb_get_phy_info_5461s(struct e1000_hw *hw)
+{
+        struct e1000_phy_info *phy = &hw->phy;
+        s32 ret_val;
+        bool link;
+       
+        ret_val = igb_phy_has_link(hw, 1, 0, &link);
+        if (ret_val)
+                goto out;
+               
+        if (!link) {
+                ret_val = -E1000_ERR_CONFIG;
+                goto out;
+        }      
+       
+        phy->polarity_correction = true;
+       
+        phy->is_mdix = true;
+        phy->cable_length = E1000_CABLE_LENGTH_UNDEFINED;
+        phy->local_rx = e1000_1000t_rx_status_ok;
+        phy->remote_rx = e1000_1000t_rx_status_ok;
+       
+out:
+        return ret_val;
+}
+
+/**
  *  igb_phy_sw_reset - PHY software reset
  *  @hw: pointer to the HW structure
  *
