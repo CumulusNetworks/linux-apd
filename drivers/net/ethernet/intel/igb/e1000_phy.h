@@ -50,6 +50,7 @@ s32  igb_get_cable_length_igp_2(struct e1000_hw *hw);
 s32  igb_get_phy_id(struct e1000_hw *hw);
 s32  igb_get_phy_info_igp(struct e1000_hw *hw);
 s32  igb_get_phy_info_m88(struct e1000_hw *hw);
+s32  igb_get_phy_info_5461s(struct e1000_hw *hw);
 s32  igb_phy_sw_reset(struct e1000_hw *hw);
 s32  igb_phy_hw_reset(struct e1000_hw *hw);
 s32  igb_read_phy_reg_igp(struct e1000_hw *hw, u32 offset, u16 *data);

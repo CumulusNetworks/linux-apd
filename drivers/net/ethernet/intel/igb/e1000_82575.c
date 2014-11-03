@@ -300,6 +300,22 @@ static s32 igb_init_phy_params_82575(struct e1000_hw *hw)
 		phy->ops.set_d3_lplu_state = igb_set_d3_lplu_state_82580;
 		phy->ops.force_speed_duplex = igb_phy_force_speed_duplex_m88;
 		break;
+	case BCM54616_E_PHY_ID:
+		pr_err("**** phy type 54616\n");
+		phy->type = e1000_phy_bcm54616;
+		phy->ops.check_polarity = NULL;
+		phy->ops.get_phy_info = NULL;
+		phy->ops.get_cable_length = NULL;
+		phy->ops.force_speed_duplex = igb_phy_force_speed_duplex_82580;
+		break;
+	case BCM5461S_E_PHY_ID:
+		pr_err("**** phy type 5461s\n");
+		phy->type = e1000_phy_bcm5461s;
+		phy->ops.check_polarity = NULL;
+		phy->ops.get_phy_info = igb_get_phy_info_5461s;
+		phy->ops.get_cable_length = NULL;
+		phy->ops.force_speed_duplex = igb_phy_force_speed_duplex_82580;
+		break;
 	default:
 		ret_val = -E1000_ERR_PHY;
 		goto out;
