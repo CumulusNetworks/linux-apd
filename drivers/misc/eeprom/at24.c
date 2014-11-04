@@ -23,6 +23,7 @@
 #include <linux/of.h>
 #include <linux/i2c.h>
 #include <linux/platform_data/at24.h>
+#include <linux/property.h>
 
 /*
  * I2C EEPROMs from most vendors are inexpensive and mostly interchangeable.
@@ -130,6 +131,12 @@ static const struct i2c_device_id at24_ids[] = {
 	{ /* END OF LIST */ }
 };
 MODULE_DEVICE_TABLE(i2c, at24_ids);
+
+static const struct of_device_id at24_of_match[] = {
+	{ .compatible = "atmel,at24" },
+	{ }
+};
+MODULE_DEVICE_TABLE(of, at24_of_match);
 
 /*-------------------------------------------------------------------------*/
 
@@ -443,26 +450,77 @@ static ssize_t at24_macc_write(struct memory_accessor *macc, const char *buf,
 
 /*-------------------------------------------------------------------------*/
 
-#ifdef CONFIG_OF
-static void at24_get_ofdata(struct i2c_client *client,
-		struct at24_platform_data *chip)
+static int at24_fw_to_chip(struct device *dev, struct at24_platform_data *chip)
 {
-	const __be32 *val;
-	struct device_node *node = client->dev.of_node;
+	u32 val;
 
-	if (node) {
-		if (of_get_property(node, "read-only", NULL))
-			chip->flags |= AT24_FLAG_READONLY;
-		val = of_get_property(node, "pagesize", NULL);
-		if (val)
-			chip->page_size = be32_to_cpup(val);
+	/* Required parameters */
+	if (device_property_read_u32(dev, "pagesize", &val) == 0)
+		chip->page_size = (u16)val;
+	else
+		return -EINVAL;
+
+	if (device_property_read_u32(dev, "size", &val) == 0)
+		chip->byte_len = val;
+	else
+		return -EINVAL;
+
+	/* Optional parameters */
+	if (device_property_read_u32(dev, "fixed-addrs", &val) == 0) {
+		if (val == 8) {
+			chip->byte_len |= AT24_FLAG_TAKE8ADDR;
+		} else {
+			dev_err(dev, "invalid fixed-addrs: %d\n", val);
+			return -EINVAL;
+		}
 	}
+
+	if (device_property_read_u32(dev, "address-width", &val) == 0) {
+		switch (val) {
+		case 8:
+			break;
+		case 16:
+			chip->flags |= AT24_FLAG_ADDR16;
+			break;
+		default:
+			dev_warn(dev, "invalid address-width: %u\n", val);
+			return -EINVAL;
+		}
+	}
+
+	if (device_property_present(dev, "read-only"))
+		chip->flags |= AT24_FLAG_READONLY;
+
+	if (device_property_present(dev, "world-readable"))
+		chip->flags |= AT24_FLAG_IRUGO;
+
+	return 0;
 }
-#else
-static void at24_get_ofdata(struct i2c_client *client,
-		struct at24_platform_data *chip)
-{ }
-#endif /* CONFIG_OF */
+
+static int at24_id_to_chip(struct device *dev, const struct i2c_device_id *id,
+			   struct at24_platform_data *chip)
+{
+	kernel_ulong_t magic;
+
+	if (!id || !id->driver_data)
+		return -EINVAL;
+
+	magic = id->driver_data;
+	chip->byte_len = BIT(magic & AT24_BITMASK(AT24_SIZE_BYTELEN));
+
+	magic >>= AT24_SIZE_BYTELEN;
+	chip->flags |= magic & AT24_BITMASK(AT24_SIZE_FLAGS);
+
+	if (chip->page_size == 0)
+		/*
+		 * This is slow, but we can't know all eeproms, so we
+		 * better play safe.  Specifying custom eeprom-types via
+		 * platform_data or firmware is recommended anyhow.
+		 */
+		chip->page_size = 1;
+
+	return 0;
+}
 
 static int at24_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
@@ -471,34 +529,30 @@ static int at24_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	int use_smbus = 0;
 	int use_smbus_write = 0;
 	struct at24_data *at24;
-	int err;
 	unsigned i, num_addresses;
-	kernel_ulong_t magic;
+	int err;
 
 	if (client->dev.platform_data) {
 		chip = *(struct at24_platform_data *)client->dev.platform_data;
 	} else {
-		if (!id->driver_data)
-			return -ENODEV;
-
-		magic = id->driver_data;
-		chip.byte_len = BIT(magic & AT24_BITMASK(AT24_SIZE_BYTELEN));
-		magic >>= AT24_SIZE_BYTELEN;
-		chip.flags = magic & AT24_BITMASK(AT24_SIZE_FLAGS);
 		/*
-		 * This is slow, but we can't know all eeproms, so we better
-		 * play safe. Specifying custom eeprom-types via platform_data
-		 * is recommended anyhow.
+		 * Get device parameters giving preference to decoding
+		 * the i2c_device_id.
 		 */
-		chip.page_size = 1;
-
-		/* update chipdata if OF is present */
-		at24_get_ofdata(client, &chip);
-
-		chip.setup = NULL;
-		chip.context = NULL;
+		err = at24_id_to_chip(&client->dev, id, &chip);
+		if (err)
+			err = at24_fw_to_chip(&client->dev, &chip);
+		if (err) {
+			dev_err(&client->dev,
+				"failed to get device parameters\n");
+			return -EINVAL;
+		}
 	}
 
+	if (!chip.byte_len) {
+		dev_err(&client->dev, "byte_len must not be 0!\n");
+		return -EINVAL;
+	}
 	if (!is_power_of_2(chip.byte_len))
 		dev_warn(&client->dev,
 			"byte_len looks suspicious (no power of 2)!\n");
@@ -661,6 +715,8 @@ static int at24_remove(struct i2c_client *client)
 static struct i2c_driver at24_driver = {
 	.driver = {
 		.name = "at24",
+		.owner = THIS_MODULE,
+		.of_match_table = at24_of_match,
 	},
 	.probe = at24_probe,
 	.remove = at24_remove,
