@@ -1772,6 +1772,7 @@ L:	linux-i2c@vger.kernel.org
 S:	Maintained
 F:	drivers/misc/eeprom/at24.c
 F:	include/linux/platform_data/at24.h
+F:	Documentation/devicetree/bindings/misc/at24.txt
 
 ATA OVER ETHERNET (AOE) DRIVER
 M:	"Ed L. Cashin" <ed.cashin@acm.org>
