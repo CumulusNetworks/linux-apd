@@ -15,6 +15,7 @@
 
 #include <linux/fwnode.h>
 #include <linux/types.h>
+#include <linux/device.h>
 
 struct device;
 

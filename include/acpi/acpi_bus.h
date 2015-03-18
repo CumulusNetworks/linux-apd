@@ -340,6 +340,7 @@ struct acpi_device_physical_node {
 
 /* ACPI Device Specific Data (_DSD) */
 struct acpi_device_data {
+	struct kobject kobj;
 	const union acpi_object *pointer;
 	const union acpi_object *properties;
 	const union acpi_object *of_compatible;
