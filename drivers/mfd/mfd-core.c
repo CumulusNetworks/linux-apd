@@ -90,12 +90,17 @@ static void mfd_acpi_add_device(const struct mfd_cell *cell,
 		return;
 
 	/*
-	 * MFD child device gets its ACPI handle either from the ACPI
-	 * device directly under the parent that matches the acpi_pnpid or
-	 * it will use the parent handle if is no acpi_pnpid is given.
+	 * The MFD child device gets its ACPI handle from the specified ACPI
+	 * device addres or acpi_pnpid.  Or, if neither is found, the ACPI
+	 * handle of its parent.
 	 */
-	adev = parent_adev;
-	if (cell->acpi_pnpid) {
+	adev = NULL;
+
+	if (cell->acpi_lookup_adr) {
+		adev = acpi_find_child_device(parent_adev, cell->acpi_adr, false);
+	}
+
+	if (!adev && cell->acpi_pnpid) {
 		struct acpi_device_id ids[2] = {};
 		struct acpi_device *child_adev;
 
@@ -106,6 +111,9 @@ static void mfd_acpi_add_device(const struct mfd_cell *cell,
 				break;
 			}
 	}
+
+	if (!adev)
+		adev = parent_adev;
 
 	ACPI_COMPANION_SET(&pdev->dev, adev);
 }
