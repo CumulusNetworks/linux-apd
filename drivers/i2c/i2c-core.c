@@ -136,6 +136,29 @@ static int acpi_i2c_find_address(struct acpi_resource *ares, void *data)
 	return 1;
 }
 
+static const char *acpi_i2c_compatible_name(struct acpi_device *adev)
+{
+	const union acpi_object *compat_obj = adev->data.of_compatible;
+	char *compatible;
+	char *p;
+
+	/*
+	 * XXX - instead of taking the first compatible string and stripping
+	 * the manufacturer, we should probably take the one that was actually
+	 * matched against the OF match table.  Otherwise difference between
+	 * the i2c match table and the OF match table would potentially lead to
+	 * confusing results.
+	 */
+
+	if (adev->data.of_compatible->type == ACPI_TYPE_STRING)
+		compatible = compat_obj->string.pointer;
+	else
+		compatible = compat_obj->package.elements[0].string.pointer;
+
+	p = strchr(compatible, ',');
+	return p ? p + 1 : compatible;
+}
+
 static acpi_status acpi_i2c_add_device(acpi_handle handle, u32 level,
 				       void *data, void **return_value)
 {
@@ -145,6 +168,7 @@ static acpi_status acpi_i2c_add_device(acpi_handle handle, u32 level,
 	struct resource_entry *entry;
 	struct i2c_board_info info;
 	struct acpi_device *adev;
+	const char *name;
 	int ret;
 
 	if (acpi_bus_get_device(handle, &adev))
@@ -187,7 +211,13 @@ static acpi_status acpi_i2c_add_device(acpi_handle handle, u32 level,
 	acpi_dev_free_resource_list(&resource_list);
 
 	adev->power.flags.ignore_parent = true;
-	strlcpy(info.type, dev_name(&adev->dev), sizeof(info.type));
+
+	if (adev->data.of_compatible)
+		name = acpi_i2c_compatible_name(adev);
+	else
+		name = dev_name(&adev->dev);
+	strlcpy(info.type, name, sizeof(info.type));
+
 	if (!i2c_new_device(adapter, &info)) {
 		adev->power.flags.ignore_parent = false;
 		dev_err(&adapter->dev,
