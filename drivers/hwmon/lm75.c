@@ -347,6 +347,12 @@ static const struct i2c_device_id lm75_ids[] = {
 };
 MODULE_DEVICE_TABLE(i2c, lm75_ids);
 
+static const struct of_device_id lm75_of_match[] = {
+	{ .compatible = "national,lm75" },
+	{ /* LIST END */ }
+};
+MODULE_DEVICE_TABLE(of, lm75_of_match);
+
 #define LM75A_ID 0xA1
 
 /* Return 0 if detection is successful, -ENODEV otherwise */
@@ -484,6 +490,7 @@ static struct i2c_driver lm75_driver = {
 	.driver = {
 		.name	= "lm75",
 		.pm	= LM75_DEV_PM_OPS,
+		.of_match_table = lm75_of_match,
 	},
 	.probe		= lm75_probe,
 	.remove		= lm75_remove,

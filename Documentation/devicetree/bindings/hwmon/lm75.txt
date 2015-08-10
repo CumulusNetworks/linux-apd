@@ -1,0 +1,14 @@
+* LM75 series thermometer.
+
+Required node properties:
+- compatible: manufacturer and chip name, one of
+	"national,lm75"
+
+- reg: I2C bus address of the device
+
+Example LM75 node:
+
+sensor {
+	compatible = "national,lm75";
+	reg = <0x48>;
+}
