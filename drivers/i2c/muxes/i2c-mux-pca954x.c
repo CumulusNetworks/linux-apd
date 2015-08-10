@@ -118,6 +118,19 @@ static const struct i2c_device_id pca954x_id[] = {
 };
 MODULE_DEVICE_TABLE(i2c, pca954x_id);
 
+static const struct of_device_id pca954x_of_match[] = {
+	{ .compatible = "nxp,pca9540" },
+	{ .compatible = "nxp,pca9542" },
+	{ .compatible = "nxp,pca9543" },
+	{ .compatible = "nxp,pca9544" },
+	{ .compatible = "nxp,pca9545" },
+	{ .compatible = "nxp,pca9546" },
+	{ .compatible = "nxp,pca9547" },
+	{ .compatible = "nxp,pca9548" },
+	{ }
+};
+MODULE_DEVICE_TABLE(of, pca954x_of_match);
+
 /* Write to mux register. Don't use i2c_transfer()/i2c_smbus_xfer()
    for this as they will try to lock adapter a second time */
 static int pca954x_reg_write(struct i2c_adapter *adap,
@@ -300,6 +313,8 @@ static struct i2c_driver pca954x_driver = {
 	.driver		= {
 		.name	= "pca954x",
 		.pm	= &pca954x_pm,
+		.owner	= THIS_MODULE,
+		.of_match_table = pca954x_of_match,
 	},
 	.probe		= pca954x_probe,
 	.remove		= pca954x_remove,
