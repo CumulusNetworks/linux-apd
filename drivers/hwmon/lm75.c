@@ -29,6 +29,7 @@
 #include <linux/mutex.h>
 #include <linux/of.h>
 #include <linux/thermal.h>
+#include <linux/acpi.h>
 #include "lm75.h"
 
 
@@ -186,6 +187,22 @@ static const struct thermal_zone_of_device_ops lm75_of_thermal_ops = {
 /* device probe and removal */
 
 static int
+lm75_fw_to_kind(struct i2c_client *client)
+{
+	const struct of_device_id *of_id;
+
+	if (!has_acpi_companion(&client->dev))
+		return -ENODEV;
+
+	of_id = acpi_of_match_device(client->dev.driver->of_match_table,
+				     &client->dev);
+	if (of_id)
+		return (uintptr_t)of_id->data;
+
+	return -ENODEV;
+}
+
+static int
 lm75_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
 	struct device *dev = &client->dev;
@@ -193,11 +210,19 @@ lm75_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	int status;
 	u8 set_mask, clr_mask;
 	int new;
-	enum lm75_type kind = id->driver_data;
+	enum lm75_type kind;
 
 	if (!i2c_check_functionality(client->adapter,
 			I2C_FUNC_SMBUS_BYTE_DATA | I2C_FUNC_SMBUS_WORD_DATA))
 		return -EIO;
+
+	if (id)
+		kind = id->driver_data;
+	else
+		kind = lm75_fw_to_kind(client);
+
+	if (kind < 0)
+		return -ENODEV;
 
 	data = devm_kzalloc(dev, sizeof(struct lm75_data), GFP_KERNEL);
 	if (!data)
@@ -347,6 +372,12 @@ static const struct i2c_device_id lm75_ids[] = {
 };
 MODULE_DEVICE_TABLE(i2c, lm75_ids);
 
+static const struct of_device_id lm75_of_match[] = {
+	{ .compatible = "national,lm75", .data = (void *)lm75 },
+	{ /* LIST END */ }
+};
+MODULE_DEVICE_TABLE(of, lm75_of_match);
+
 #define LM75A_ID 0xA1
 
 /* Return 0 if detection is successful, -ENODEV otherwise */
@@ -484,6 +515,7 @@ static struct i2c_driver lm75_driver = {
 	.driver = {
 		.name	= "lm75",
 		.pm	= LM75_DEV_PM_OPS,
+		.of_match_table = lm75_of_match,
 	},
 	.probe		= lm75_probe,
 	.remove		= lm75_remove,
