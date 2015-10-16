@@ -290,7 +290,7 @@ static struct snd_soc_dai_link cht_dailink[] = {
 		.platform_name = "sst-mfld-platform",
 		.no_pcm = 1,
 		.codec_dai_name = "rt5645-aif1",
-		.codec_name = "i2c-10EC5645:00",
+		.codec_name = "10EC5645:00",
 		.dai_fmt = SND_SOC_DAIFMT_DSP_B | SND_SOC_DAIFMT_IB_NF
 					| SND_SOC_DAIFMT_CBS_CFS,
 		.init = cht_codec_init,
@@ -367,7 +367,7 @@ static int snd_cht_mc_probe(struct platform_device *pdev)
 		}
 	}
 	card->dev = &pdev->dev;
-	sprintf(codec_name, "i2c-%s:00", drv->acpi_card->codec_id);
+	sprintf(codec_name, "%s:00", drv->acpi_card->codec_id);
 	/* set correct codec name */
 	strcpy((char *)card->dai_link[2].codec_name, codec_name);
 	snd_soc_card_set_drvdata(card, drv);

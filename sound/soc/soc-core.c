@@ -34,6 +34,7 @@
 #include <linux/ctype.h>
 #include <linux/slab.h>
 #include <linux/of.h>
+#include <linux/acpi.h>
 #include <sound/core.h>
 #include <sound/jack.h>
 #include <sound/pcm.h>
@@ -2488,9 +2489,17 @@ static char *fmt_single_name(struct device *dev, int *id)
 {
 	char *found, name[NAME_SIZE];
 	int id1, id2;
+	struct acpi_device *adev;
 
 	if (dev_name(dev) == NULL)
 		return NULL;
+
+	if (ACPI_HANDLE(dev) &&
+	    !acpi_bus_get_device(ACPI_HANDLE(dev), &adev)) {
+		/* use ACPI name as a component name for ACPI probed devices */
+		strlcpy(name, acpi_dev_name(adev), NAME_SIZE);
+		goto out;
+	}
 
 	strlcpy(name, dev_name(dev), NAME_SIZE);
 
@@ -2520,6 +2529,7 @@ static char *fmt_single_name(struct device *dev, int *id)
 			*id = 0;
 	}
 
+out:
 	return kstrdup(name, GFP_KERNEL);
 }
 
