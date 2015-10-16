@@ -280,7 +280,7 @@ static struct snd_soc_dai_link cht_dailink[] = {
 		.no_pcm = 1,
 		.nonatomic = true,
 		.codec_dai_name = "rt5670-aif1",
-		.codec_name = "i2c-10EC5670:00",
+		.codec_name = "10EC5670:00",
 		.dai_fmt = SND_SOC_DAIFMT_DSP_B | SND_SOC_DAIFMT_IB_NF
 					| SND_SOC_DAIFMT_CBS_CFS,
 		.init = cht_codec_init,
@@ -296,7 +296,7 @@ static int cht_suspend_pre(struct snd_soc_card *card)
 	struct snd_soc_codec *codec;
 
 	list_for_each_entry(codec, &card->codec_dev_list, card_list) {
-		if (!strcmp(codec->component.name, "i2c-10EC5670:00")) {
+		if (!strcmp(codec->component.name, "10EC5670:00")) {
 			dev_dbg(codec->dev, "disabling jack detect before going to suspend.\n");
 			rt5670_jack_suspend(codec);
 			break;
@@ -310,7 +310,7 @@ static int cht_resume_post(struct snd_soc_card *card)
 	struct snd_soc_codec *codec;
 
 	list_for_each_entry(codec, &card->codec_dev_list, card_list) {
-		if (!strcmp(codec->component.name, "i2c-10EC5670:00")) {
+		if (!strcmp(codec->component.name, "10EC5670:00")) {
 			dev_dbg(codec->dev, "enabling jack detect for resume.\n");
 			rt5670_jack_resume(codec);
 			break;

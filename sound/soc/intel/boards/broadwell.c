@@ -205,7 +205,7 @@ static struct snd_soc_dai_link broadwell_rt286_dais[] = {
 		.cpu_dai_name = "snd-soc-dummy-dai",
 		.platform_name = "snd-soc-dummy",
 		.no_pcm = 1,
-		.codec_name = "i2c-INT343A:00",
+		.codec_name = "INT343A:00",
 		.codec_dai_name = "rt286-aif1",
 		.init = broadwell_rt286_codec_init,
 		.dai_fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
@@ -223,7 +223,7 @@ static int broadwell_suspend(struct snd_soc_card *card){
 	struct snd_soc_codec *codec;
 
 	list_for_each_entry(codec, &card->codec_dev_list, card_list) {
-		if (!strcmp(codec->component.name, "i2c-INT343A:00")) {
+		if (!strcmp(codec->component.name, "INT343A:00")) {
 			dev_dbg(codec->dev, "disabling jack detect before going to suspend.\n");
 			rt286_mic_detect(codec, NULL);
 			break;
@@ -236,7 +236,7 @@ static int broadwell_resume(struct snd_soc_card *card){
 	struct snd_soc_codec *codec;
 
 	list_for_each_entry(codec, &card->codec_dev_list, card_list) {
-		if (!strcmp(codec->component.name, "i2c-INT343A:00")) {
+		if (!strcmp(codec->component.name, "INT343A:00")) {
 			dev_dbg(codec->dev, "enabling jack detect for resume.\n");
 			rt286_mic_detect(codec, &broadwell_headset);
 			break;
