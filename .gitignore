@@ -57,6 +57,11 @@ Module.symvers
 /debian/
 
 #
+# Cumulus directory
+#
+/cumulus/
+
+#
 # tar directory (make tar*-pkg)
 #
 /tar-install/
