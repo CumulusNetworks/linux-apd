@@ -256,6 +256,7 @@ static int i2c_dw_pci_probe(struct pci_dev *pdev,
 	adap->class = 0;
 	adap->algo = &i2c_dw_algo;
 	adap->dev.parent = &pdev->dev;
+	ACPI_COMPANION_SET(&adap->dev, ACPI_COMPANION(&pdev->dev));
 	adap->nr = controller->bus_num;
 
 	snprintf(adap->name, sizeof(adap->name), "i2c-designware-pci");

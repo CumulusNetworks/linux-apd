@@ -271,6 +271,7 @@ static int dw_i2c_probe(struct platform_device *pdev)
 			sizeof(adap->name));
 	adap->algo = &i2c_dw_algo;
 	adap->dev.parent = &pdev->dev;
+	ACPI_COMPANION_SET(&adap->dev, ACPI_COMPANION(&pdev->dev));
 	adap->dev.of_node = pdev->dev.of_node;
 
 	if (dev->pm_runtime_disabled) {
