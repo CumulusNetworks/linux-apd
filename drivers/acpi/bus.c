@@ -551,7 +551,8 @@ struct acpi_device *acpi_companion_match(const struct device *dev)
 }
 
 /**
- * acpi_of_match_device - Match device object using the "compatible" property.
+ * __acpi_of_match_device - Match device object using the "compatible"
+ * property.
  * @adev: ACPI device object to match.
  * @of_match_table: List of device IDs to match against.
  *
@@ -559,18 +560,18 @@ struct acpi_device *acpi_companion_match(const struct device *dev)
  * identifiers and a _DSD object with the "compatible" property, use that
  * property to match against the given list of identifiers.
  */
-static bool acpi_of_match_device(struct acpi_device *adev,
-				 const struct of_device_id *of_match_table)
+static const struct of_device_id *__acpi_of_match_device(struct acpi_device *adev,
+					const struct of_device_id *of_match_table)
 {
 	const union acpi_object *of_compatible, *obj;
 	int i, nval;
 
 	if (!adev)
-		return false;
+		return ERR_PTR(-ENODEV);
 
 	of_compatible = adev->data.of_compatible;
 	if (!of_match_table || !of_compatible)
-		return false;
+		return ERR_PTR(-ENODEV);
 
 	if (of_compatible->type == ACPI_TYPE_PACKAGE) {
 		nval = of_compatible->package.count;
@@ -585,10 +586,10 @@ static bool acpi_of_match_device(struct acpi_device *adev,
 
 		for (id = of_match_table; id->compatible[0]; id++)
 			if (!strcasecmp(obj->string.pointer, id->compatible))
-				return true;
+				return id;
 	}
 
-	return false;
+	return ERR_PTR(-ENODEV);
 }
 
 static bool __acpi_match_device_cls(const struct acpi_device_id *id,
@@ -647,7 +648,7 @@ static const struct acpi_device_id *__acpi_match_device(
 		 * whether or not the return value is NULL.
 		 */
 		if (!strcmp(ACPI_DT_NAMESPACE_HID, hwid->id)
-		    && acpi_of_match_device(device, of_ids))
+		    && !IS_ERR(__acpi_of_match_device(device, of_ids)))
 			return id;
 	}
 	return NULL;
@@ -671,6 +672,18 @@ const struct acpi_device_id *acpi_match_device(const struct acpi_device_id *ids,
 }
 EXPORT_SYMBOL_GPL(acpi_match_device);
 
+const struct of_device_id *acpi_of_match_device(const struct of_device_id *ids,
+						const struct device *dev)
+{
+	struct acpi_device *adev = ACPI_COMPANION(dev);
+
+	if (!adev || !adev->data.of_compatible)
+		return NULL;
+	else
+		return __acpi_of_match_device(adev, ids);
+}
+EXPORT_SYMBOL_GPL(acpi_of_match_device);
+
 int acpi_match_device_ids(struct acpi_device *device,
 			  const struct acpi_device_id *ids)
 {
@@ -682,8 +695,8 @@ bool acpi_driver_match_device(struct device *dev,
 			      const struct device_driver *drv)
 {
 	if (!drv->acpi_match_table)
-		return acpi_of_match_device(ACPI_COMPANION(dev),
-					    drv->of_match_table);
+		return !IS_ERR(__acpi_of_match_device(ACPI_COMPANION(dev),
+						    drv->of_match_table));
 
 	return !!__acpi_match_device(acpi_companion_match(dev),
 				     drv->acpi_match_table, drv->of_match_table);
