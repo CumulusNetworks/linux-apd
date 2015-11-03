@@ -15,13 +15,11 @@
 #include <linux/slab.h>
 #include <linux/delay.h>
 #include <linux/mutex.h>
-#include <linux/acpi.h>
 #include <linux/sysfs.h>
 #include <linux/mod_devicetable.h>
 #include <linux/log2.h>
 #include <linux/bitops.h>
 #include <linux/jiffies.h>
-#include <linux/of.h>
 #include <linux/i2c.h>
 #include <linux/platform_data/at24.h>
 #include <linux/property.h>
@@ -129,14 +127,13 @@ static const struct i2c_device_id at24_ids[] = {
 	{ "24c512", AT24_DEVICE_MAGIC(524288 / 8, AT24_FLAG_ADDR16) },
 	{ "24c1024", AT24_DEVICE_MAGIC(1048576 / 8, AT24_FLAG_ADDR16) },
 	{ "at24", 0 },
-	{ "sff-twi", 0 },
 	{ /* END OF LIST */ }
 };
 MODULE_DEVICE_TABLE(i2c, at24_ids);
 
 static const struct of_device_id at24_of_match[] = {
-	{ .compatible = "at24" },
-	{ .compatible = "sff-twi" },
+	{ .compatible = "atmel,at24" },
+	{ .compatible = "sff,twi" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, at24_of_match);
@@ -196,19 +193,11 @@ static ssize_t at24_eeprom_read(struct at24_data *at24, char *buf,
 	if (count > io_limit)
 		count = io_limit;
 
-	switch (at24->use_smbus) {
-	case I2C_SMBUS_I2C_BLOCK_DATA:
+	if (at24->use_smbus) {
 		/* Smaller eeproms can work given some SMBus extension calls */
 		if (count > I2C_SMBUS_BLOCK_MAX)
 			count = I2C_SMBUS_BLOCK_MAX;
-		break;
-	case I2C_SMBUS_WORD_DATA:
-		count = 2;
-		break;
-	case I2C_SMBUS_BYTE_DATA:
-		count = 1;
-		break;
-	default:
+	} else {
 		/*
 		 * When we have a better choice than SMBus calls, use a
 		 * combined I2C message. Write address; then read up to
@@ -239,27 +228,10 @@ static ssize_t at24_eeprom_read(struct at24_data *at24, char *buf,
 	timeout = jiffies + msecs_to_jiffies(write_timeout);
 	do {
 		read_time = jiffies;
-		switch (at24->use_smbus) {
-		case I2C_SMBUS_I2C_BLOCK_DATA:
-			status = i2c_smbus_read_i2c_block_data(client, offset,
-					count, buf);
-			break;
-		case I2C_SMBUS_WORD_DATA:
-			status = i2c_smbus_read_word_data(client, offset);
-			if (status >= 0) {
-				buf[0] = status & 0xff;
-				buf[1] = status >> 8;
-				status = count;
-			}
-			break;
-		case I2C_SMBUS_BYTE_DATA:
-			status = i2c_smbus_read_byte_data(client, offset);
-			if (status >= 0) {
-				buf[0] = status;
-				status = count;
-			}
-			break;
-		default:
+		if (at24->use_smbus) {
+			status = i2c_smbus_read_i2c_block_data_or_emulated(client, offset,
+									   count, buf);
+		} else {
 			status = i2c_transfer(client->adapter, msg, 2);
 			if (status == 2)
 				status = count;
@@ -448,9 +420,6 @@ static ssize_t at24_bin_write(struct file *filp, struct kobject *kobj,
 {
 	struct at24_data *at24;
 
-	if (unlikely(off >= attr->size))
-		return -EFBIG;
-
 	at24 = dev_get_drvdata(container_of(kobj, struct device, kobj));
 	return at24_write(at24, buf, off, count);
 }
@@ -481,41 +450,40 @@ static ssize_t at24_macc_write(struct memory_accessor *macc, const char *buf,
 
 /*-------------------------------------------------------------------------*/
 
-static bool at24_fw_to_chip(struct device *dev, struct at24_platform_data *chip)
+static int at24_fw_to_chip(struct device *dev, struct at24_platform_data *chip)
 {
-	bool complete = true;
 	u32 val;
-	const char *str;
 
-	if (device_property_read_string(dev, "compatible", &str) != 0)
-		return false;
+	/* Required parameters */
+	if (device_property_read_u32(dev, "pagesize", &val))
+		return -EINVAL;
+	chip->page_size = (u16)val;
 
-	if (strcmp(str, "at24") == 0) {
-		/* Required parameters */
-		if (device_property_read_u32(dev, "pagesize", &val) == 0)
-			chip->page_size = (u16)val;
-		else
-			complete = false;
+	if (device_property_read_u32(dev, "size", &val))
+		return -EINVAL;
+	chip->byte_len = val;
 
-		if (device_property_read_u32(dev, "byte-len", &val) == 0)
-			chip->byte_len = val;
-		else
-			complete = false;
-
-		/* Optional parameters */
-		if (device_property_read_u32(dev, "fixed-pages", &val) == 0) {
-			if (val == 8)
-			    chip->byte_len |= AT24_FLAG_TAKE8ADDR;
-			else
-			    dev_warn(dev, "at24: invalid fixed-pages: %d\n", val);
+	/* Optional parameters */
+	if (device_property_read_u32(dev, "fixed-addrs", &val) == 0) {
+		if (val == 8) {
+			chip->byte_len |= AT24_FLAG_TAKE8ADDR;
+		} else {
+			dev_err(dev, "invalid fixed-addrs: %d\n", val);
+			return -EINVAL;
 		}
-	} else if (strcmp(str, "sff-twi") == 0) {
-		// XXX - super hack
-		chip->page_size = 1;
-		chip->byte_len = 256;
-		chip->flags = AT24_FLAG_IRUGO;
-	} else {
-		return false;
+	}
+
+	if (device_property_read_u32(dev, "address-width", &val) == 0) {
+		switch (val) {
+		case 8:
+			break;
+		case 16:
+			chip->flags |= AT24_FLAG_ADDR16;
+			break;
+		default:
+			dev_err(dev, "invalid address-width: %u\n", val);
+			return -EINVAL;
+		}
 	}
 
 	if (device_property_present(dev, "read-only"))
@@ -524,7 +492,32 @@ static bool at24_fw_to_chip(struct device *dev, struct at24_platform_data *chip)
 	if (device_property_present(dev, "world-readable"))
 		chip->flags |= AT24_FLAG_IRUGO;
 
-	return complete;
+	return 0;
+}
+
+static int at24_id_to_chip(struct device *dev, const struct i2c_device_id *id,
+			   struct at24_platform_data *chip)
+{
+	kernel_ulong_t magic;
+
+	if (!id || !id->driver_data)
+		return -EINVAL;
+
+	magic = id->driver_data;
+	chip->byte_len = BIT(magic & AT24_BITMASK(AT24_SIZE_BYTELEN));
+
+	magic >>= AT24_SIZE_BYTELEN;
+	chip->flags |= magic & AT24_BITMASK(AT24_SIZE_FLAGS);
+
+	if (chip->page_size == 0)
+		/*
+		 * This is slow, but we can't know all eeproms, so we
+		 * better play safe.  Specifying custom eeprom-types via
+		 * platform_data or firmware is recommended anyhow.
+		 */
+		chip->page_size = 1;
+
+	return 0;
 }
 
 static int at24_probe(struct i2c_client *client, const struct i2c_device_id *id)
@@ -534,39 +527,20 @@ static int at24_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	int use_smbus = 0;
 	int use_smbus_write = 0;
 	struct at24_data *at24;
-	int err;
 	unsigned i, num_addresses;
-	kernel_ulong_t magic;
+	int err;
 
 	if (client->dev.platform_data) {
 		chip = *(struct at24_platform_data *)client->dev.platform_data;
+		dev_dbg(&client->dev, "using platform data\n");
+	} else if (id) {
+		if (at24_id_to_chip(&client->dev, id, &chip))
+			return -EINVAL;
+		dev_dbg(&client->dev, "using i2c device data\n");
 	} else {
-		/*
-		 * Try to get parameters from firmware.
-		 */
-		if (at24_fw_to_chip(&client->dev, &chip)) {
-			dev_info(&client->dev, "using firmware properties\n");
-		} else {
-			/*
-			 * Fill in the remainder from the id_table data.
-			 */
-			if (id && id->driver_data) {
-				magic = id->driver_data;
-				if (chip.byte_len == 0)
-					chip.byte_len = BIT(magic & AT24_BITMASK(AT24_SIZE_BYTELEN));
-				magic >>= AT24_SIZE_BYTELEN;
-				chip.flags |= magic & AT24_BITMASK(AT24_SIZE_FLAGS);
-				if (chip.page_size == 0)
-					/*
-					 * This is slow, but we can't know all
-					 * eeproms, so we better play safe.
-					 * Specifying custom eeprom-types via
-					 * platform_data or firmware is
-					 * recommended anyhow.
-					 */
-					chip.page_size = 1;
-			}
-		}
+		if (at24_fw_to_chip(&client->dev, &chip))
+			return -EINVAL;
+		dev_dbg(&client->dev, "using device property data\n");
 	}
 
 	if (!chip.byte_len) {
@@ -620,6 +594,8 @@ static int at24_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	else
 		num_addresses =	DIV_ROUND_UP(chip.byte_len,
 			(chip.flags & AT24_FLAG_ADDR16) ? 65536 : 256);
+
+        dev_err(&client->dev, "numaddrs: %u, size: %u\n", num_addresses, chip.byte_len);
 
 	at24 = devm_kzalloc(&client->dev, sizeof(struct at24_data) +
 		num_addresses * sizeof(struct i2c_client *), GFP_KERNEL);

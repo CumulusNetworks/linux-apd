@@ -174,8 +174,9 @@ static int swc_cpld_i2c_mux_probe(struct platform_device *pdev)
 		return err;
 	}
 
-	err = acpi_dev_get_property_reference(ACPI_COMPANION(&pdev->dev),
-	                                      "i2c-parent", 0, &ref);
+	err = acpi_node_get_property_reference(
+		acpi_fwnode_handle(ACPI_COMPANION(&pdev->dev)),
+				   "i2c-parent", 0, &ref);
 	if (err) {
 	        dev_err(&pdev->dev, "failed to read device property: i2c-parent\n");
 	        return err;
@@ -224,11 +225,11 @@ static int swc_cpld_i2c_mux_probe(struct platform_device *pdev)
 		unsigned int class = 0;
 		u64 adr;
 
-		status = acpi_evaluate_integer(acpi_node(child)->handle,
+		status = acpi_evaluate_integer(to_acpi_device_node(child)->handle,
 					       "_ADR", NULL, &adr);
 		if (ACPI_FAILURE(status)) {
 			dev_err(&pdev->dev, "failed to get ACPI address for: %s, err=%d\n",
-				dev_name(&acpi_node(child)->dev), status);
+				dev_name(&to_acpi_device_node(child)->dev), status);
 			goto skip;
 		}
 

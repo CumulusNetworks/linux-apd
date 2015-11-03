@@ -136,7 +136,7 @@ static int sff_fw_get_gpio(struct device *dev, const char *name,
 {
 	struct gpio_desc *gpiod;
 
-	gpiod = devm_gpiod_get(dev, name);
+	gpiod = devm_gpiod_get(dev, name, 0);
 	if (IS_ERR(gpiod)) {
 		dev_err(dev, "failed to get gpiod for %s\n", name);
 		return -ENODEV;

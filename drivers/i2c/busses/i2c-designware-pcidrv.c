@@ -256,12 +256,13 @@ static int i2c_dw_pci_probe(struct pci_dev *pdev,
 	adap->class = 0;
 	adap->algo = &i2c_dw_algo;
 	adap->dev.parent = &pdev->dev;
+	ACPI_COMPANION_SET(&adap->dev, ACPI_COMPANION(&pdev->dev));
 	adap->nr = controller->bus_num;
 
 	snprintf(adap->name, sizeof(adap->name), "i2c-designware-pci");
 
-	r = devm_request_irq(&pdev->dev, pdev->irq, i2c_dw_isr, IRQF_SHARED,
-			adap->name, dev);
+	r = devm_request_irq(&pdev->dev, pdev->irq, i2c_dw_isr,
+			IRQF_SHARED | IRQF_COND_SUSPEND, adap->name, dev);
 	if (r) {
 		dev_err(&pdev->dev, "failure requesting irq %i\n", dev->irq);
 		return r;

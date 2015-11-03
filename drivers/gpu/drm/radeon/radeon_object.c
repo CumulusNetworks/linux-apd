@@ -75,7 +75,6 @@ static void radeon_ttm_bo_destroy(struct ttm_buffer_object *tbo)
 	bo = container_of(tbo, struct radeon_bo, tbo);
 
 	radeon_update_memory_usage(bo, bo->tbo.mem.mem_type, -1);
-	radeon_mn_unregister(bo);
 
 	mutex_lock(&bo->rdev->gem.mutex);
 	list_del_init(&bo->list);
@@ -172,17 +171,6 @@ void radeon_ttm_placement_from_domain(struct radeon_bo *rbo, u32 domain)
 				rbo->rdev->mc.visible_vram_size >> PAGE_SHIFT;
 		else
 			rbo->placements[i].lpfn = 0;
-	}
-
-	/*
-	 * Use two-ended allocation depending on the buffer size to
-	 * improve fragmentation quality.
-	 * 512kb was measured as the most optimal number.
-	 */
-	if (rbo->tbo.mem.size > 512 * 1024) {
-		for (i = 0; i < c; i++) {
-			rbo->placements[i].flags |= TTM_PL_FLAG_TOPDOWN;
-		}
 	}
 }
 
@@ -431,7 +419,6 @@ void radeon_bo_force_delete(struct radeon_device *rdev)
 	}
 	dev_err(rdev->dev, "Userspace still has active objects !\n");
 	list_for_each_entry_safe(bo, n, &rdev->gem.objects, list) {
-		mutex_lock(&rdev->ddev->struct_mutex);
 		dev_err(rdev->dev, "%p %p %lu %lu force free\n",
 			&bo->gem_base, bo, (unsigned long)bo->gem_base.size,
 			*((unsigned long *)&bo->gem_base.refcount));
@@ -439,8 +426,7 @@ void radeon_bo_force_delete(struct radeon_device *rdev)
 		list_del_init(&bo->list);
 		mutex_unlock(&bo->rdev->gem.mutex);
 		/* this should unref the ttm bo */
-		drm_gem_object_unreference(&bo->gem_base);
-		mutex_unlock(&rdev->ddev->struct_mutex);
+		drm_gem_object_unreference_unlocked(&bo->gem_base);
 	}
 }
 

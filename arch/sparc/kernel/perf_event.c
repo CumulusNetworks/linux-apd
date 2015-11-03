@@ -21,7 +21,7 @@
 
 #include <asm/stacktrace.h>
 #include <asm/cpudata.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 #include <linux/atomic.h>
 #include <asm/nmi.h>
 #include <asm/pcr.h>
@@ -737,25 +737,9 @@ static void sparc_vt_write_pmc(int idx, u64 val)
 {
 	u64 pcr;
 
-	/* There seems to be an internal latch on the overflow event
-	 * on SPARC-T4 that prevents it from triggering unless you
-	 * update the PIC exactly as we do here.  The requirement
-	 * seems to be that you have to turn off event counting in the
-	 * PCR around the PIC update.
-	 *
-	 * For example, after the following sequence:
-	 *
-	 * 1) set PIC to -1
-	 * 2) enable event counting and overflow reporting in PCR
-	 * 3) overflow triggers, softint 15 handler invoked
-	 * 4) clear OV bit in PCR
-	 * 5) write PIC to -1
-	 *
-	 * a subsequent overflow event will not trigger.  This
-	 * sequence works on SPARC-T3 and previous chips.
-	 */
 	pcr = pcr_ops->read_pcr(idx);
-	pcr_ops->write_pcr(idx, PCR_N4_PICNPT);
+	/* ensure ov and ntc are reset */
+	pcr &= ~(PCR_N4_OV | PCR_N4_NTC);
 
 	pcr_ops->write_pic(idx, val & 0xffffffff);
 
@@ -792,6 +776,29 @@ static const struct sparc_pmu niagara4_pmu = {
 	.num_pic_regs	= 4,
 };
 
+static const struct sparc_pmu sparc_m7_pmu = {
+	.event_map	= niagara4_event_map,
+	.cache_map	= &niagara4_cache_map,
+	.max_events	= ARRAY_SIZE(niagara4_perfmon_event_map),
+	.read_pmc	= sparc_vt_read_pmc,
+	.write_pmc	= sparc_vt_write_pmc,
+	.upper_shift	= 5,
+	.lower_shift	= 5,
+	.event_mask	= 0x7ff,
+	.user_bit	= PCR_N4_UTRACE,
+	.priv_bit	= PCR_N4_STRACE,
+
+	/* We explicitly don't support hypervisor tracing. */
+	.hv_bit		= 0,
+
+	.irq_bit	= PCR_N4_TOE,
+	.upper_nop	= 0,
+	.lower_nop	= 0,
+	.flags		= 0,
+	.max_hw_events	= 4,
+	.num_pcrs	= 4,
+	.num_pic_regs	= 4,
+};
 static const struct sparc_pmu *sparc_pmu __read_mostly;
 
 static u64 event_encoding(u64 event_id, int idx)
@@ -960,6 +967,8 @@ out:
 	cpuc->pcr[0] |= cpuc->event[0]->hw.config_base;
 }
 
+static void sparc_pmu_start(struct perf_event *event, int flags);
+
 /* On this PMU each PIC has it's own PCR control register.  */
 static void calculate_multiple_pcrs(struct cpu_hw_events *cpuc)
 {
@@ -972,20 +981,13 @@ static void calculate_multiple_pcrs(struct cpu_hw_events *cpuc)
 		struct perf_event *cp = cpuc->event[i];
 		struct hw_perf_event *hwc = &cp->hw;
 		int idx = hwc->idx;
-		u64 enc;
 
 		if (cpuc->current_idx[i] != PIC_NO_INDEX)
 			continue;
 
-		sparc_perf_event_set_period(cp, hwc, idx);
 		cpuc->current_idx[i] = idx;
 
-		enc = perf_event_get_enc(cpuc->events[i]);
-		cpuc->pcr[idx] &= ~mask_for_index(idx);
-		if (hwc->state & PERF_HES_STOPPED)
-			cpuc->pcr[idx] |= nop_for_index(idx);
-		else
-			cpuc->pcr[idx] |= event_encoding(enc, idx);
+		sparc_pmu_start(cp, PERF_EF_RELOAD);
 	}
 out:
 	for (i = 0; i < cpuc->n_events; i++) {
@@ -1101,7 +1103,6 @@ static void sparc_pmu_del(struct perf_event *event, int _flags)
 	int i;
 
 	local_irq_save(flags);
-	perf_pmu_disable(event->pmu);
 
 	for (i = 0; i < cpuc->n_events; i++) {
 		if (event == cpuc->event[i]) {
@@ -1127,7 +1128,6 @@ static void sparc_pmu_del(struct perf_event *event, int _flags)
 		}
 	}
 
-	perf_pmu_enable(event->pmu);
 	local_irq_restore(flags);
 }
 
@@ -1361,7 +1361,6 @@ static int sparc_pmu_add(struct perf_event *event, int ef_flags)
 	unsigned long flags;
 
 	local_irq_save(flags);
-	perf_pmu_disable(event->pmu);
 
 	n0 = cpuc->n_events;
 	if (n0 >= sparc_pmu->max_hw_events)
@@ -1394,7 +1393,6 @@ nocheck:
 
 	ret = 0;
 out:
-	perf_pmu_enable(event->pmu);
 	local_irq_restore(flags);
 	return ret;
 }
@@ -1667,6 +1665,10 @@ static bool __init supported_pmu(void)
 		sparc_pmu = &niagara4_pmu;
 		return true;
 	}
+	if (!strcmp(sparc_pmu_type, "sparc-m7")) {
+		sparc_pmu = &sparc_m7_pmu;
+		return true;
+	}
 	return false;
 }
 
@@ -1739,18 +1741,31 @@ void perf_callchain_kernel(struct perf_callchain_entry *entry,
 	} while (entry->nr < PERF_MAX_STACK_DEPTH);
 }
 
+static inline int
+valid_user_frame(const void __user *fp, unsigned long size)
+{
+	/* addresses should be at least 4-byte aligned */
+	if (((unsigned long) fp) & 3)
+		return 0;
+
+	return (__range_not_ok(fp, size, TASK_SIZE) == 0);
+}
+
 static void perf_callchain_user_64(struct perf_callchain_entry *entry,
 				   struct pt_regs *regs)
 {
 	unsigned long ufp;
 
-	ufp = regs->u_regs[UREG_I6] + STACK_BIAS;
+	ufp = regs->u_regs[UREG_FP] + STACK_BIAS;
 	do {
 		struct sparc_stackf __user *usf;
 		struct sparc_stackf sf;
 		unsigned long pc;
 
 		usf = (struct sparc_stackf __user *)ufp;
+		if (!valid_user_frame(usf, sizeof(sf)))
+			break;
+
 		if (__copy_from_user_inatomic(&sf, usf, sizeof(sf)))
 			break;
 
@@ -1765,7 +1780,7 @@ static void perf_callchain_user_32(struct perf_callchain_entry *entry,
 {
 	unsigned long ufp;
 
-	ufp = regs->u_regs[UREG_I6] & 0xffffffffUL;
+	ufp = regs->u_regs[UREG_FP] & 0xffffffffUL;
 	do {
 		unsigned long pc;
 
@@ -1801,8 +1816,13 @@ perf_callchain_user(struct perf_callchain_entry *entry, struct pt_regs *regs)
 		return;
 
 	flushw_user();
+
+	pagefault_disable();
+
 	if (test_thread_flag(TIF_32BIT))
 		perf_callchain_user_32(entry, regs);
 	else
 		perf_callchain_user_64(entry, regs);
+
+	pagefault_enable();
 }

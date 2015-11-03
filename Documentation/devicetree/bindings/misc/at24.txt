@@ -1,0 +1,25 @@
+EEPROMs (I2C) compatible with Atmel at24.
+
+Required properties:
+- compatible : "atmel,at24"
+- reg : I2C address
+- size : total eeprom size in bytes
+- pagesize : size of the eeprom page
+
+Optional properties:
+- address-width : number of address bits (8 or 16).  Defaults to 8.
+- read-only : if exists, prevents writes to the eeprom device.
+- world-readable : if exists, makes the eeprom device world readable.
+- fixed-addrs : set a fixed number of I2C addresses for the device.  If
+  present, must be 8.
+
+Additional compatible properties are also allowed.
+
+Example:
+
+eeprom@0 {
+	compatible = "atmel,at24c02d", "atmel,at24";
+	reg = <0x57>
+	pagesize = <8>;
+	size = <256>;
+};

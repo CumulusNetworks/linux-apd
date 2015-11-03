@@ -278,11 +278,11 @@ static int swc_cpld_probe(struct i2c_client *client, const struct i2c_device_id 
 			if (err)
 				goto skip;
 
-			status = acpi_evaluate_integer(acpi_node(child)->handle,
+			status = acpi_evaluate_integer(to_acpi_device_node(child)->handle,
 						       "_ADR", NULL, &adr);
 			if (ACPI_FAILURE(status)) {
 				dev_err(dev, "failed to get ACPI address for: %s, err=%d\n",
-					dev_name(&acpi_node(child)->dev), status);
+					dev_name(&to_acpi_device_node(child)->dev), status);
 				goto skip;
 			}
 

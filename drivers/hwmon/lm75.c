@@ -30,7 +30,6 @@
 #include <linux/of.h>
 #include <linux/thermal.h>
 #include <linux/acpi.h>
-#include <linux/nls.h>
 #include "lm75.h"
 
 
@@ -77,7 +76,6 @@ static const u8 LM75_REG_TEMP[3] = {
 /* Each client has this additional data */
 struct lm75_data {
 	struct i2c_client	*client;
-	union acpi_object	*str;
 	struct device		*hwmon_dev;
 	struct thermal_zone_device	*tz;
 	struct mutex		update_lock;
@@ -107,7 +105,7 @@ static inline long lm75_reg_to_mc(s16 temp, u8 resolution)
 
 /* sysfs attributes for hwmon */
 
-static int lm75_read_temp(void *dev, long *temp)
+static int lm75_read_temp(void *dev, int *temp)
 {
 	struct lm75_data *data = lm75_update_device(dev);
 
@@ -165,38 +163,17 @@ static ssize_t set_temp(struct device *dev, struct device_attribute *da,
 	return count;
 }
 
-static ssize_t show_label(struct device *dev,
-			  struct device_attribute *attr, char *buf)
-{
-	struct lm75_data *data = dev_get_drvdata(dev);
-        int result;
-
-	if (!data->str)
-		return 0;
-
-        result = utf16s_to_utf8s(
-                (wchar_t *)data->str->buffer.pointer,
-                data->str->buffer.length,
-                UTF16_LITTLE_ENDIAN, buf,
-                PAGE_SIZE);
-
-        buf[result++] = '\n';
-
-	return result;
-}
-
 static SENSOR_DEVICE_ATTR(temp1_max, S_IWUSR | S_IRUGO,
 			show_temp, set_temp, 1);
 static SENSOR_DEVICE_ATTR(temp1_max_hyst, S_IWUSR | S_IRUGO,
 			show_temp, set_temp, 2);
 static SENSOR_DEVICE_ATTR(temp1_input, S_IRUGO, show_temp, NULL, 0);
-static SENSOR_DEVICE_ATTR(temp1_label, S_IRUGO, show_label, NULL, 0);
 
 static struct attribute *lm75_attrs[] = {
 	&sensor_dev_attr_temp1_input.dev_attr.attr,
 	&sensor_dev_attr_temp1_max.dev_attr.attr,
 	&sensor_dev_attr_temp1_max_hyst.dev_attr.attr,
-	&sensor_dev_attr_temp1_label.dev_attr.attr,
+
 	NULL
 };
 ATTRIBUTE_GROUPS(lm75);
@@ -210,11 +187,26 @@ static const struct thermal_zone_of_device_ops lm75_of_thermal_ops = {
 /* device probe and removal */
 
 static int
+lm75_fw_to_kind(struct i2c_client *client)
+{
+	const struct of_device_id *of_id;
+
+	if (!has_acpi_companion(&client->dev))
+		return -ENODEV;
+
+	of_id = acpi_of_match_device(client->dev.driver->of_match_table,
+				     &client->dev);
+	if (of_id)
+		return (uintptr_t)of_id->data;
+
+	return -ENODEV;
+}
+
+static int
 lm75_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
 	struct device *dev = &client->dev;
 	struct lm75_data *data;
-	const char *hwmon_name;
 	int status;
 	u8 set_mask, clr_mask;
 	int new;
@@ -224,34 +216,17 @@ lm75_probe(struct i2c_client *client, const struct i2c_device_id *id)
 			I2C_FUNC_SMBUS_BYTE_DATA | I2C_FUNC_SMBUS_WORD_DATA))
 		return -EIO;
 
+	if (id)
+		kind = id->driver_data;
+	else
+		kind = lm75_fw_to_kind(client);
+
+	if (kind < 0)
+		return -ENODEV;
+
 	data = devm_kzalloc(dev, sizeof(struct lm75_data), GFP_KERNEL);
 	if (!data)
 		return -ENOMEM;
-
-	if (id) {
-		kind = id->driver_data;
-		hwmon_name = client->name;
-	} else {
-		const char *str;
-		int err;
-
-		err = device_property_read_string(dev, "compatible", &str);
-		if (err)
-			return -EINVAL;
-
-		hwmon_name = str;
-
-		if (ACPI_COMPANION(dev)->pnp.str_obj)
-			data->str = ACPI_COMPANION(dev)->pnp.str_obj;
-
-		/*
-		 * XXX - parse device properties to generate parameters.  For
-		 * now, assume lm75
-		 */
-
-		kind = lm75;
-		dev_info(dev, "using firmware properties\n");
-	}
 
 	data->client = client;
 	i2c_set_clientdata(client, data);
@@ -345,7 +320,7 @@ lm75_probe(struct i2c_client *client, const struct i2c_device_id *id)
 		lm75_write_value(client, LM75_REG_CONF, new);
 	dev_dbg(dev, "Config %02x\n", new);
 
-	data->hwmon_dev = hwmon_device_register_with_groups(dev, hwmon_name,
+	data->hwmon_dev = hwmon_device_register_with_groups(dev, client->name,
 							    data, lm75_groups);
 	if (IS_ERR(data->hwmon_dev))
 		return PTR_ERR(data->hwmon_dev);
@@ -398,12 +373,10 @@ static const struct i2c_device_id lm75_ids[] = {
 MODULE_DEVICE_TABLE(i2c, lm75_ids);
 
 static const struct of_device_id lm75_of_match[] = {
-	{ .compatible = "lm75" },
-	{ },
+	{ .compatible = "national,lm75", .data = (void *)lm75 },
+	{ /* LIST END */ }
 };
-
 MODULE_DEVICE_TABLE(of, lm75_of_match);
-
 
 #define LM75A_ID 0xA1
 
@@ -415,8 +388,6 @@ static int lm75_detect(struct i2c_client *new_client,
 	int i;
 	int conf, hyst, os;
 	bool is_lm75a = 0;
-
-	dev_dbg(&new_client->dev, "started detect\n");
 
 	if (!i2c_check_functionality(adapter, I2C_FUNC_SMBUS_BYTE_DATA |
 				     I2C_FUNC_SMBUS_WORD_DATA))
@@ -497,8 +468,6 @@ static int lm75_detect(struct i2c_client *new_client,
 	}
 
 	strlcpy(info->type, is_lm75a ? "lm75a" : "lm75", I2C_NAME_SIZE);
-
-	dev_dbg(&new_client->dev, "finished detect\n");
 
 	return 0;
 }

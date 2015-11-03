@@ -29,6 +29,7 @@
 #include <linux/module.h>
 #include <linux/balloon_compaction.h>
 #include <linux/oom.h>
+#include <linux/wait.h>
 
 /*
  * Balloon device works in 4K page units.  So each page is pointed to by
@@ -156,7 +157,9 @@ static void fill_balloon(struct virtio_balloon *vb, size_t num)
 		}
 		set_page_pfns(vb->pfns + vb->num_pfns, page);
 		vb->num_pages += VIRTIO_BALLOON_PAGES_PER_PAGE;
-		adjust_managed_page_count(page, -1);
+		if (!virtio_has_feature(vb->vdev,
+					VIRTIO_BALLOON_F_DEFLATE_ON_OOM))
+			adjust_managed_page_count(page, -1);
 	}
 
 	/* Did we get any? */
@@ -165,14 +168,16 @@ static void fill_balloon(struct virtio_balloon *vb, size_t num)
 	mutex_unlock(&vb->balloon_lock);
 }
 
-static void release_pages_by_pfn(const u32 pfns[], unsigned int num)
+static void release_pages_balloon(struct virtio_balloon *vb)
 {
 	unsigned int i;
 
 	/* Find pfns pointing at start of each page, get pages and free them. */
-	for (i = 0; i < num; i += VIRTIO_BALLOON_PAGES_PER_PAGE) {
-		struct page *page = balloon_pfn_to_page(pfns[i]);
-		adjust_managed_page_count(page, 1);
+	for (i = 0; i < vb->num_pfns; i += VIRTIO_BALLOON_PAGES_PER_PAGE) {
+		struct page *page = balloon_pfn_to_page(vb->pfns[i]);
+		if (!virtio_has_feature(vb->vdev,
+					VIRTIO_BALLOON_F_DEFLATE_ON_OOM))
+			adjust_managed_page_count(page, 1);
 		put_page(page); /* balloon reference */
 	}
 }
@@ -205,7 +210,7 @@ static unsigned leak_balloon(struct virtio_balloon *vb, size_t num)
 	if (vb->num_pfns != 0)
 		tell_host(vb, vb->deflate_vq);
 	mutex_unlock(&vb->balloon_lock);
-	release_pages_by_pfn(vb->pfns, vb->num_pfns);
+	release_pages_balloon(vb);
 	return num_freed_pages;
 }
 
@@ -213,8 +218,8 @@ static inline void update_stat(struct virtio_balloon *vb, int idx,
 			       u16 tag, u64 val)
 {
 	BUG_ON(idx >= VIRTIO_BALLOON_S_NR);
-	vb->stats[idx].tag = tag;
-	vb->stats[idx].val = val;
+	vb->stats[idx].tag = cpu_to_virtio16(vb->vdev, tag);
+	vb->stats[idx].val = cpu_to_virtio64(vb->vdev, val);
 }
 
 #define pages_to_bytes(x) ((u64)(x) << PAGE_SHIFT)
@@ -282,18 +287,27 @@ static void virtballoon_changed(struct virtio_device *vdev)
 
 static inline s64 towards_target(struct virtio_balloon *vb)
 {
-	__le32 v;
 	s64 target;
+	u32 num_pages;
 
-	virtio_cread(vb->vdev, struct virtio_balloon_config, num_pages, &v);
+	virtio_cread(vb->vdev, struct virtio_balloon_config, num_pages,
+		     &num_pages);
 
-	target = le32_to_cpu(v);
+	/* Legacy balloon config space is LE, unlike all other devices. */
+	if (!virtio_has_feature(vb->vdev, VIRTIO_F_VERSION_1))
+		num_pages = le32_to_cpu((__force __le32)num_pages);
+
+	target = num_pages;
 	return target - vb->num_pages;
 }
 
 static void update_balloon_size(struct virtio_balloon *vb)
 {
-	__le32 actual = cpu_to_le32(vb->num_pages);
+	u32 actual = vb->num_pages;
+
+	/* Legacy balloon config space is LE, unlike all other devices. */
+	if (!virtio_has_feature(vb->vdev, VIRTIO_F_VERSION_1))
+		actual = (__force u32)cpu_to_le32(actual);
 
 	virtio_cwrite(vb->vdev, struct virtio_balloon_config, actual,
 		      &actual);
@@ -334,17 +348,25 @@ static int virtballoon_oom_notify(struct notifier_block *self,
 static int balloon(void *_vballoon)
 {
 	struct virtio_balloon *vb = _vballoon;
+	DEFINE_WAIT_FUNC(wait, woken_wake_function);
 
 	set_freezable();
 	while (!kthread_should_stop()) {
 		s64 diff;
 
 		try_to_freeze();
-		wait_event_interruptible(vb->config_change,
-					 (diff = towards_target(vb)) != 0
-					 || vb->need_stats_update
-					 || kthread_should_stop()
-					 || freezing(current));
+
+		add_wait_queue(&vb->config_change, &wait);
+		for (;;) {
+			if ((diff = towards_target(vb)) != 0 ||
+			    vb->need_stats_update ||
+			    kthread_should_stop() ||
+			    freezing(current))
+				break;
+			wait_woken(&wait, TASK_INTERRUPTIBLE, MAX_SCHEDULE_TIMEOUT);
+		}
+		remove_wait_queue(&vb->config_change, &wait);
+
 		if (vb->need_stats_update)
 			stats_handle_request(vb);
 		if (diff > 0)
@@ -498,6 +520,8 @@ static int virtballoon_probe(struct virtio_device *vdev)
 	err = register_oom_notifier(&vb->nb);
 	if (err < 0)
 		goto out_oom_notify;
+
+	virtio_device_ready(vdev);
 
 	vb->thread = kthread_run(balloon, vb, "vballoon");
 	if (IS_ERR(vb->thread)) {

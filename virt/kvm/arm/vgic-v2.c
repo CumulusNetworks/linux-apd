@@ -48,6 +48,10 @@ static struct vgic_lr vgic_v2_get_lr(const struct kvm_vcpu *vcpu, int lr)
 		lr_desc.state |= LR_STATE_ACTIVE;
 	if (val & GICH_LR_EOI)
 		lr_desc.state |= LR_EOI_INT;
+	if (val & GICH_LR_HW) {
+		lr_desc.state |= LR_HW;
+		lr_desc.hwirq = (val & GICH_LR_PHYSID_CPUID) >> GICH_LR_PHYSID_CPUID_SHIFT;
+	}
 
 	return lr_desc;
 }
@@ -55,7 +59,9 @@ static struct vgic_lr vgic_v2_get_lr(const struct kvm_vcpu *vcpu, int lr)
 static void vgic_v2_set_lr(struct kvm_vcpu *vcpu, int lr,
 			   struct vgic_lr lr_desc)
 {
-	u32 lr_val = (lr_desc.source << GICH_LR_PHYSID_CPUID_SHIFT) | lr_desc.irq;
+	u32 lr_val;
+
+	lr_val = lr_desc.irq;
 
 	if (lr_desc.state & LR_STATE_PENDING)
 		lr_val |= GICH_LR_PENDING_BIT;
@@ -63,6 +69,14 @@ static void vgic_v2_set_lr(struct kvm_vcpu *vcpu, int lr,
 		lr_val |= GICH_LR_ACTIVE_BIT;
 	if (lr_desc.state & LR_EOI_INT)
 		lr_val |= GICH_LR_EOI;
+
+	if (lr_desc.state & LR_HW) {
+		lr_val |= GICH_LR_HW;
+		lr_val |= (u32)lr_desc.hwirq << GICH_LR_PHYSID_CPUID_SHIFT;
+	}
+
+	if (lr_desc.irq < VGIC_NR_SGIS)
+		lr_val |= (lr_desc.source << GICH_LR_PHYSID_CPUID_SHIFT);
 
 	vcpu->arch.vgic_cpu.vgic_v2.vgic_lr[lr] = lr_val;
 }
@@ -72,6 +86,8 @@ static void vgic_v2_sync_lr_elrsr(struct kvm_vcpu *vcpu, int lr,
 {
 	if (!(lr_desc.state & LR_STATE_MASK))
 		vcpu->arch.vgic_cpu.vgic_v2.vgic_elrsr |= (1ULL << lr);
+	else
+		vcpu->arch.vgic_cpu.vgic_v2.vgic_elrsr &= ~(1ULL << lr);
 }
 
 static u64 vgic_v2_get_elrsr(const struct kvm_vcpu *vcpu)
@@ -82,6 +98,11 @@ static u64 vgic_v2_get_elrsr(const struct kvm_vcpu *vcpu)
 static u64 vgic_v2_get_eisr(const struct kvm_vcpu *vcpu)
 {
 	return vcpu->arch.vgic_cpu.vgic_v2.vgic_eisr;
+}
+
+static void vgic_v2_clear_eisr(struct kvm_vcpu *vcpu)
+{
+	vcpu->arch.vgic_cpu.vgic_v2.vgic_eisr = 0;
 }
 
 static u32 vgic_v2_get_interrupt_status(const struct kvm_vcpu *vcpu)
@@ -148,6 +169,7 @@ static const struct vgic_ops vgic_v2_ops = {
 	.sync_lr_elrsr		= vgic_v2_sync_lr_elrsr,
 	.get_elrsr		= vgic_v2_get_elrsr,
 	.get_eisr		= vgic_v2_get_eisr,
+	.clear_eisr		= vgic_v2_clear_eisr,
 	.get_interrupt_status	= vgic_v2_get_interrupt_status,
 	.enable_underflow	= vgic_v2_enable_underflow,
 	.disable_underflow	= vgic_v2_disable_underflow,

@@ -12,10 +12,6 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- *
  */
 
 #include <linux/kernel.h>
@@ -26,7 +22,7 @@
 #include <linux/kthread.h>
 #include <linux/freezer.h>
 #include <linux/cpu.h>
-#include <linux/clockchips.h>
+#include <linux/tick.h>
 #include <linux/slab.h>
 #include <linux/acpi.h>
 #include <asm/mwait.h>
@@ -105,7 +101,7 @@ static void round_robin_cpu(unsigned int tsk_index)
 	mutex_lock(&round_robin_lock);
 	cpumask_clear(tmp);
 	for_each_cpu(cpu, pad_busy_cpus)
-		cpumask_or(tmp, tmp, topology_thread_cpumask(cpu));
+		cpumask_or(tmp, tmp, topology_sibling_cpumask(cpu));
 	cpumask_andnot(tmp, cpu_online_mask, tmp);
 	/* avoid HT sibilings if possible */
 	if (cpumask_empty(tmp))
@@ -150,10 +146,7 @@ static int power_saving_thread(void *data)
 	sched_setscheduler(current, SCHED_RR, &param);
 
 	while (!kthread_should_stop()) {
-		int cpu;
 		unsigned long expire_time;
-
-		try_to_freeze();
 
 		/* round robin to cpus */
 		expire_time = last_jiffies + round_robin_time * HZ;
@@ -172,17 +165,15 @@ static int power_saving_thread(void *data)
 				mark_tsc_unstable("TSC halts in idle");
 				tsc_marked_unstable = 1;
 			}
-			clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_ON, &cpu);
-
 			local_irq_disable();
-			cpu = smp_processor_id();
-			clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_ENTER, &cpu);
+			tick_broadcast_enable();
+			tick_broadcast_enter();
 			stop_critical_timings();
 
 			mwait_idle_with_hints(power_saving_mwait_eax, 1);
 
 			start_critical_timings();
-			clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_EXIT, &cpu);
+			tick_broadcast_exit();
 			local_irq_enable();
 
 			if (time_before(expire_time, jiffies)) {

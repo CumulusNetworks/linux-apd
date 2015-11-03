@@ -174,12 +174,12 @@ static ssize_t show_label(struct device *dev,
 		dev_err(dev, "no ACPI companion\n");
 		return 0;
 	}
-                                         
+
 	if (!adev->pnp.str_obj) {
 		dev_err(dev, "no _STR\n");
 		return 0;
 	}
-                                         
+
         result = utf16s_to_utf8s(
                 (wchar_t *)adev->pnp.str_obj->buffer.pointer,
                 adev->pnp.str_obj->buffer.length,
@@ -190,7 +190,7 @@ static ssize_t show_label(struct device *dev,
 		result += sprintf(&buf[result], " (PWM)");
 	else if (strcmp(attr->attr.name, "fan1_label") == 0)
 		result += sprintf(&buf[result], " speed (RPM)");
-                
+
         buf[result++] = '\n';
 
 	return result;
@@ -274,8 +274,9 @@ static int swc_fan_probe(struct platform_device *pdev)
 		struct acpi_reference_args ref;
 		u32 range[2];
 
-		err = acpi_dev_get_property_reference(ACPI_COMPANION(&pdev->dev),
-						      "pwm", 0, &ref);
+		err = acpi_node_get_property_reference(
+			acpi_fwnode_handle(ACPI_COMPANION(&pdev->dev)),
+					   "pwm", 0, &ref);
 		if (err) {
 			dev_err(&pdev->dev, "failed to get pwm device\n");
 			return -EINVAL;
@@ -312,8 +313,9 @@ static int swc_fan_probe(struct platform_device *pdev)
 		u32 range[2];
 		u32 scale;
 
-		err = acpi_dev_get_property_reference(ACPI_COMPANION(&pdev->dev),
-						      "speed", 0, &ref);
+		err = acpi_node_get_property_reference(
+			acpi_fwnode_handle(ACPI_COMPANION(&pdev->dev)),
+					   "speed", 0, &ref);
 		if (err) {
 			dev_err(&pdev->dev, "failed to get speed device\n");
 			return -EINVAL;
@@ -342,7 +344,7 @@ static int swc_fan_probe(struct platform_device *pdev)
 			data->speed_scale = scale;
 	}
 
-	data->alarm = devm_gpiod_get(&pdev->dev, "alarm");
+	data->alarm = devm_gpiod_get(&pdev->dev, "alarm", 0);
 	if (PTR_ERR(data->alarm) == -ENODEV)
 		return -EPROBE_DEFER;
 	else if (IS_ERR(data->alarm))
@@ -350,7 +352,7 @@ static int swc_fan_probe(struct platform_device *pdev)
 	else
 		dev_info(&pdev->dev, "using alarm gpio\n");
 
-	data->present = devm_gpiod_get(&pdev->dev, "present");
+	data->present = devm_gpiod_get(&pdev->dev, "present", 0);
 	if (PTR_ERR(data->present) == -ENODEV)
 		return -EPROBE_DEFER;
 	else if (IS_ERR(data->present))
@@ -378,7 +380,7 @@ static int swc_fan_probe(struct platform_device *pdev)
 			goto fail;
 		}
 	}
-	
+
 	// XXX - setup presence poll or interrupt
 
 	dev_info(&pdev->dev, "added fan\n");

@@ -37,10 +37,12 @@ static const struct apic apic_numachip;
 static unsigned int get_apic_id(unsigned long x)
 {
 	unsigned long value;
-	unsigned int id;
+	unsigned int id = (x >> 24) & 0xff;
 
-	rdmsrl(MSR_FAM10H_NODE_ID, value);
-	id = ((x >> 24) & 0xffU) | ((value << 2) & 0xff00U);
+	if (static_cpu_has_safe(X86_FEATURE_NODEID_MSR)) {
+		rdmsrl(MSR_FAM10H_NODE_ID, value);
+		id |= (value << 2) & 0xff00;
+	}
 
 	return id;
 }
@@ -90,7 +92,6 @@ static int numachip_wakeup_secondary(int phys_apicid, unsigned long start_rip)
 
 	write_lcsr(CSR_G3_EXT_IRQ_GEN, int_gen.v);
 
-	atomic_set(&init_deasserted, 1);
 	return 0;
 }
 
@@ -155,10 +156,18 @@ static int __init numachip_probe(void)
 
 static void fixup_cpu_id(struct cpuinfo_x86 *c, int node)
 {
-	if (c->phys_proc_id != node) {
-		c->phys_proc_id = node;
-		per_cpu(cpu_llc_id, smp_processor_id()) = node;
+	u64 val;
+	u32 nodes = 1;
+
+	this_cpu_write(cpu_llc_id, node);
+
+	/* Account for nodes per socket in multi-core-module processors */
+	if (static_cpu_has_safe(X86_FEATURE_NODEID_MSR)) {
+		rdmsrl(MSR_FAM10H_NODE_ID, val);
+		nodes = ((val >> 3) & 7) + 1;
 	}
+
+	c->phys_proc_id = node / nodes;
 }
 
 static int __init numachip_system_init(void)
@@ -225,7 +234,6 @@ static const struct apic apic_numachip __refconst = {
 	.send_IPI_self			= numachip_send_IPI_self,
 
 	.wakeup_secondary_cpu		= numachip_wakeup_secondary,
-	.wait_for_init_deassert		= false,
 	.inquire_remote_apic		= NULL, /* REMRD not supported */
 
 	.read				= native_apic_mem_read,

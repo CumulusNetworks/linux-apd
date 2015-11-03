@@ -299,9 +299,10 @@ static long local_pci_probe(void *_ddi)
 	 * Unbound PCI devices are always put in D0, regardless of
 	 * runtime PM status.  During probe, the device is set to
 	 * active and the usage count is incremented.  If the driver
-	 * supports runtime PM, it should call pm_runtime_put_noidle()
-	 * in its probe routine and pm_runtime_get_noresume() in its
-	 * remove routine.
+	 * supports runtime PM, it should call pm_runtime_put_noidle(),
+	 * or any other runtime PM helper function decrementing the usage
+	 * count, in its probe routine and pm_runtime_get_noresume() in
+	 * its remove routine.
 	 */
 	pm_runtime_get_sync(dev);
 	pci_dev->driver = pci_drv;
@@ -388,18 +389,31 @@ static int __pci_device_probe(struct pci_driver *drv, struct pci_dev *pci_dev)
 	return error;
 }
 
+int __weak pcibios_alloc_irq(struct pci_dev *dev)
+{
+	return 0;
+}
+
+void __weak pcibios_free_irq(struct pci_dev *dev)
+{
+}
+
 static int pci_device_probe(struct device *dev)
 {
-	int error = 0;
-	struct pci_driver *drv;
-	struct pci_dev *pci_dev;
+	int error;
+	struct pci_dev *pci_dev = to_pci_dev(dev);
+	struct pci_driver *drv = to_pci_driver(dev->driver);
 
-	drv = to_pci_driver(dev->driver);
-	pci_dev = to_pci_dev(dev);
+	error = pcibios_alloc_irq(pci_dev);
+	if (error < 0)
+		return error;
+
 	pci_dev_get(pci_dev);
 	error = __pci_device_probe(drv, pci_dev);
-	if (error)
+	if (error) {
+		pcibios_free_irq(pci_dev);
 		pci_dev_put(pci_dev);
+	}
 
 	return error;
 }
@@ -415,6 +429,7 @@ static int pci_device_remove(struct device *dev)
 			drv->remove(pci_dev);
 			pm_runtime_put_noidle(dev);
 		}
+		pcibios_free_irq(pci_dev);
 		pci_dev->driver = NULL;
 	}
 
@@ -453,7 +468,7 @@ static void pci_device_shutdown(struct device *dev)
 	pci_msi_shutdown(pci_dev);
 	pci_msix_shutdown(pci_dev);
 
-#ifdef CONFIG_KEXEC
+#ifdef CONFIG_KEXEC_CORE
 	/*
 	 * If this is a kexec reboot, turn off Bus Master bit on the
 	 * device to tell it to not continue to do DMA. Don't touch
@@ -669,10 +684,16 @@ static int pci_pm_prepare(struct device *dev)
 	return pci_dev_keep_suspended(to_pci_dev(dev));
 }
 
+static void pci_pm_complete(struct device *dev)
+{
+	pci_dev_complete_resume(to_pci_dev(dev));
+	pm_complete_with_resume_check(dev);
+}
 
 #else /* !CONFIG_PM_SLEEP */
 
 #define pci_pm_prepare	NULL
+#define pci_pm_complete	NULL
 
 #endif /* !CONFIG_PM_SLEEP */
 
@@ -1203,6 +1224,7 @@ static int pci_pm_runtime_idle(struct device *dev)
 
 static const struct dev_pm_ops pci_dev_pm_ops = {
 	.prepare = pci_pm_prepare,
+	.complete = pci_pm_complete,
 	.suspend = pci_pm_suspend,
 	.resume = pci_pm_resume,
 	.freeze = pci_pm_freeze,

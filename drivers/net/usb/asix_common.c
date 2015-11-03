@@ -91,8 +91,10 @@ int asix_rx_fixup_internal(struct usbnet *dev, struct sk_buff *skb,
 			}
 			rx->ax_skb = netdev_alloc_skb_ip_align(dev->net,
 							       rx->size);
-			if (!rx->ax_skb)
+			if (!rx->ax_skb) {
+				rx->size = 0;
 				return 0;
+			}
 		}
 
 		if (rx->size > dev->net->mtu + ETH_HLEN + VLAN_HLEN) {
@@ -188,6 +190,8 @@ struct sk_buff *asix_tx_fixup(struct usbnet *dev, struct sk_buff *skb,
 		memcpy(skb_tail_pointer(skb), &padbytes, sizeof(padbytes));
 		skb_put(skb, sizeof(padbytes));
 	}
+
+	usbnet_set_skb_tx_stats(skb, 1, 0);
 	return skb;
 }
 

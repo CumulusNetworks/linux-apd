@@ -69,8 +69,8 @@ struct device *swc_fw_util_get_ref_physical(struct device *dev, const char *name
 	struct acpi_reference_args ref;
 	int err;
 
-	err = acpi_dev_get_property_reference(ACPI_COMPANION(dev), name, 0,
-					      &ref);
+	err = acpi_node_get_property_reference(acpi_fwnode_handle(ACPI_COMPANION(dev)),
+					       name, 0, &ref);
 	if (err)
 		return ERR_PTR(-EINVAL);
 
