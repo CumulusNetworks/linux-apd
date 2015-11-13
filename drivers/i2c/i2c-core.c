@@ -1489,6 +1489,24 @@ EXPORT_SYMBOL(of_get_i2c_adapter_by_node);
 static void of_i2c_register_devices(struct i2c_adapter *adap) { }
 #endif /* CONFIG_OF */
 
+static int acpi_companion_match(struct device *dev, void *data)
+{
+        return ACPI_COMPANION(dev->parent) == data;
+}
+
+struct i2c_adapter *acpi_find_i2c_adapter(struct acpi_device *adev)
+{
+	struct device *dev;
+
+	dev = bus_find_device(&i2c_bus_type, NULL, adev,
+		              acpi_companion_match);
+	if (!dev)
+		return NULL;
+
+	return i2c_verify_adapter(dev);
+}
+EXPORT_SYMBOL(acpi_find_i2c_adapter);
+
 static int i2c_do_add_adapter(struct i2c_driver *driver,
 			      struct i2c_adapter *adap)
 {

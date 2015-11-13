@@ -24,6 +24,62 @@ config SWC_FW
 	  This support can also be built as a module.  If so, the module
 	  will be called swc-fw.
 
+config SWC_CPLD
+	tristate "Firmware Defined Multifunction Device"
+	select REGMAP_I2C
+	help
+	  Select this option to enable accessing switch complex system
+	  registers defined via device properties.
+
+	  This support can also be built as a module.  If so, the module
+	  will be called swc-cpld.
+
+
+config SWC_CPLD_GPIO
+	tristate "Firmware Defined GPIO Device"
+	depends on SWC_CPLD
+	help
+	  Select this option to enable accessing GPIO pins defined via device
+	  properties.
+
+config SWC_CPLD_REGISTER
+	tristate "Firmware Defined Register Device"
+	depends on SWC_CPLD
+	help
+	  Select this option to enable accessing registers defined via device
+	  properties.
+
+config SWC_CPLD_I2C_MUX
+	tristate "Firmware Defined I2C Mux Device"
+	depends on SWC_CPLD
+	help
+	  Select this option to enable accessing I2C multiplexers defined via
+	  device properties.
+
+config SWC_FAN
+	tristate "Firmware Defined Fan"
+	help
+	  Select this option to enable control and monitoring of fan devices
+	  defined via device properties.
+
+config SWC_LED
+	tristate "Firmware Defined LED"
+	help
+	  Select this option to enable controling LEDs defined via device
+	  properties.
+
+config SWC_PSU
+	tristate "Firmware Defined PSU"
+	help
+	  Select this option to enable power supply monitoring defined via
+	  device properties.
+
+config SWC_THERMAL
+	tristate "Firmware Defined Thermal Zones"
+	help
+	  Select this option to enable thermal zones defined via device
+	  properties.
+
 config SWP
 	tristate "Switch Port Support"
 	default n

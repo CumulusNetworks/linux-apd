@@ -26,6 +26,7 @@
 #ifndef _LINUX_I2C_H
 #define _LINUX_I2C_H
 
+#include <linux/acpi.h>         /* for struct acpi_device */
 #include <linux/mod_devicetable.h>
 #include <linux/device.h>	/* for struct device */
 #include <linux/sched.h>	/* for completion */
@@ -661,5 +662,7 @@ static inline struct i2c_adapter *of_get_i2c_adapter_by_node(struct device_node 
 	return NULL;
 }
 #endif /* CONFIG_OF */
+
+extern struct i2c_adapter *acpi_find_i2c_adapter(struct acpi_device *adev);
 
 #endif /* _LINUX_I2C_H */
