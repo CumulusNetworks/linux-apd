@@ -188,4 +188,6 @@ source "drivers/nvdimm/Kconfig"
 
 source "drivers/nvmem/Kconfig"
 
+source "drivers/swc/Kconfig"
+
 endmenu

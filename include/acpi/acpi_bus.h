@@ -568,6 +568,7 @@ enum dev_dma_attr acpi_get_dma_attr(struct acpi_device *adev);
 
 struct acpi_device *acpi_find_child_device(struct acpi_device *parent,
 					   u64 address, bool check_children);
+struct device *acpi_find_physical_dev(struct acpi_device *adev);
 int acpi_is_root_bridge(acpi_handle);
 struct acpi_pci_root *acpi_pci_find_root(acpi_handle handle);
 

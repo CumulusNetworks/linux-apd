@@ -1,0 +1,73 @@
+#
+# Switch Complex Drivers Configuration
+#
+
+menuconfig SWC
+	tristate "Switch Complex Support"
+	default n
+	help
+	  Network Switch Complex devices provide platform data and control for
+	  network switch platforms.
+
+	  This support can also be built as a module.  If so, the module
+	  will be called swc.
+
+if SWC
+
+config SWC_FW
+	tristate "Firmware Defined Switch Complex Driver"
+	default n
+	help
+	  Support for firmware-backed (OF or ACPI) switch complex
+	  configuration.
+
+	  This support can also be built as a module.  If so, the module
+	  will be called swc-fw.
+
+config SWP
+	tristate "Switch Port Support"
+	default n
+	help
+	  Network Switch Port devices provide platform data and control for
+	  network switch ports.
+
+	  This support can also be built as a module.  If so, the module
+	  will be called swp.
+
+config SWP_FW
+	tristate "Firmware Defined Switch Port Driver"
+	depends on SWP
+	default n
+	help
+	  Support for firmware-backed (OF or ACPI) switch port configuration.
+
+	  This support can also be built as a module.  If so, the module
+	  will be called swp-fw.
+
+config SFF
+	tristate "Small Form Factor Pluggable Transceiver Support"
+	default n
+	help
+	  Small Form Factor Pluggable Transceiver devices provide platform data
+	  and control for SFF pluggables defined by the MSA.
+
+	  This support can also be built as a module.  If so, the module
+	  will be called sff.
+
+config SFF_FW
+	tristate "Firmware Defined Small Form Factor Pluggable Transceiver Driver"
+	depends on SFF
+	default n
+	help
+	  Support for firmware-backed (OF or ACPI) SFF transcievers.
+
+	  This support can also be built as a module.  If so, the module
+	  will be called sff-fw.
+
+config SWC_DEBUG
+	bool "Enable Debugging"
+	default n
+	help
+	  Say Y here to enable debugging messages.
+
+endif
