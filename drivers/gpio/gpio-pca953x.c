@@ -21,6 +21,7 @@
 #ifdef CONFIG_OF_GPIO
 #include <linux/of_platform.h>
 #endif
+#include <linux/acpi.h>
 
 #define PCA953X_INPUT		0
 #define PCA953X_OUTPUT		1
@@ -38,39 +39,128 @@
 #define PCA957X_MSK		6
 #define PCA957X_INTS		7
 
-#define PCA_GPIO_MASK		0x00FF
-#define PCA_INT			0x0100
-#define PCA953X_TYPE		0x1000
-#define PCA957X_TYPE		0x2000
+enum pca953x_type {
+	pca9505,
+	pca9534,
+	pca9535,
+	pca9536,
+	pca9537,
+	pca9538,
+	pca9539,
+	pca9554,
+	pca9555,
+	pca9556,
+	pca9557,
+	pca9574,
+	pca9575,
+	pca9698,
+	max7310,
+	max7312,
+	max7313,
+	max7315,
+	pca6107,
+	tca6408,
+	tca6416,
+	tca6424,
+	xra1202,
+};
+
+enum pca953x_subtype {
+	pca953x,
+	pca957x,
+};
+
+enum pca953x_features {
+	pca953x_interrupt,
+};
+
+struct pca953x_desc {
+	u8 ngpio;
+	enum pca953x_subtype subtype;
+	enum pca953x_features features;
+};
+
+static const struct pca953x_desc chips[] = {
+	[pca9505] = { 40, pca953x, pca953x_interrupt },
+	[pca9534] = {  8, pca953x, pca953x_interrupt },
+	[pca9535] = { 16, pca953x, pca953x_interrupt },
+	[pca9536] = {  4, pca953x, 0 },
+	[pca9537] = {  4, pca953x, pca953x_interrupt },
+	[pca9538] = {  8, pca953x, pca953x_interrupt },
+	[pca9539] = { 16, pca953x, pca953x_interrupt },
+	[pca9554] = {  8, pca953x, pca953x_interrupt },
+	[pca9555] = { 16, pca953x, pca953x_interrupt },
+	[pca9556] = {  8, pca953x, 0},
+	[pca9557] = {  8, pca953x, 0},
+	[pca9574] = {  8, pca957x, pca953x_interrupt },
+	[pca9575] = { 16, pca957x, pca953x_interrupt },
+	[pca9698] = { 40, pca953x, 0},
+	[max7310] = {  8, pca953x, 0},
+	[max7312] = { 16, pca953x, pca953x_interrupt },
+	[max7313] = { 16, pca953x, pca953x_interrupt },
+	[max7315] = {  8, pca953x, pca953x_interrupt },
+	[pca6107] = {  8, pca953x, pca953x_interrupt },
+	[tca6408] = {  8, pca953x, pca953x_interrupt },
+	[tca6416] = { 16, pca953x, pca953x_interrupt },
+	[tca6424] = { 24, pca953x, pca953x_interrupt },
+	[xra1202] = {  8, pca953x, 0},
+};
 
 static const struct i2c_device_id pca953x_id[] = {
-	{ "pca9505", 40 | PCA953X_TYPE | PCA_INT, },
-	{ "pca9534", 8  | PCA953X_TYPE | PCA_INT, },
-	{ "pca9535", 16 | PCA953X_TYPE | PCA_INT, },
-	{ "pca9536", 4  | PCA953X_TYPE, },
-	{ "pca9537", 4  | PCA953X_TYPE | PCA_INT, },
-	{ "pca9538", 8  | PCA953X_TYPE | PCA_INT, },
-	{ "pca9539", 16 | PCA953X_TYPE | PCA_INT, },
-	{ "pca9554", 8  | PCA953X_TYPE | PCA_INT, },
-	{ "pca9555", 16 | PCA953X_TYPE | PCA_INT, },
-	{ "pca9556", 8  | PCA953X_TYPE, },
-	{ "pca9557", 8  | PCA953X_TYPE, },
-	{ "pca9574", 8  | PCA957X_TYPE | PCA_INT, },
-	{ "pca9575", 16 | PCA957X_TYPE | PCA_INT, },
-	{ "pca9698", 40 | PCA953X_TYPE, },
-
-	{ "max7310", 8  | PCA953X_TYPE, },
-	{ "max7312", 16 | PCA953X_TYPE | PCA_INT, },
-	{ "max7313", 16 | PCA953X_TYPE | PCA_INT, },
-	{ "max7315", 8  | PCA953X_TYPE | PCA_INT, },
-	{ "pca6107", 8  | PCA953X_TYPE | PCA_INT, },
-	{ "tca6408", 8  | PCA953X_TYPE | PCA_INT, },
-	{ "tca6416", 16 | PCA953X_TYPE | PCA_INT, },
-	{ "tca6424", 24 | PCA953X_TYPE | PCA_INT, },
-	{ "xra1202", 8  | PCA953X_TYPE },
+	{ "pca9505", pca9505 },
+	{ "pca9534", pca9534 },
+	{ "pca9535", pca9535 },
+	{ "pca9536", pca9536 },
+	{ "pca9537", pca9537 },
+	{ "pca9538", pca9538 },
+	{ "pca9539", pca9539 },
+	{ "pca9554", pca9554 },
+	{ "pca9555", pca9555 },
+	{ "pca9556", pca9556 },
+	{ "pca9557", pca9557 },
+	{ "pca9574", pca9574 },
+	{ "pca9575", pca9575 },
+	{ "pca9698", pca9698 },
+	{ "max7310", max7310 },
+	{ "max7312", max7312 },
+	{ "max7313", max7313 },
+	{ "max7315", max7315 },
+	{ "pca6107", pca6107 },
+	{ "tca6408", tca6408 },
+	{ "tca6416", tca6416 },
+	{ "tca6424", tca6424 },
+	{ "xra1202", xra1202 },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, pca953x_id);
+
+static const struct of_device_id pca953x_of_match[] = {
+	{ .compatible = "nxp,pca9505",   .data = &chips[pca9505] },
+	{ .compatible = "nxp,pca9534",   .data = &chips[pca9534] },
+	{ .compatible = "nxp,pca9535",   .data = &chips[pca9535] },
+	{ .compatible = "nxp,pca9536",   .data = &chips[pca9536] },
+	{ .compatible = "nxp,pca9537",   .data = &chips[pca9537] },
+	{ .compatible = "nxp,pca9538",   .data = &chips[pca9538] },
+	{ .compatible = "nxp,pca9539",   .data = &chips[pca9539] },
+	{ .compatible = "nxp,pca9554",   .data = &chips[pca9554] },
+	{ .compatible = "nxp,pca9555",   .data = &chips[pca9555] },
+	{ .compatible = "nxp,pca9556",   .data = &chips[pca9556] },
+	{ .compatible = "nxp,pca9557",   .data = &chips[pca9557] },
+	{ .compatible = "nxp,pca9574",   .data = &chips[pca9574] },
+	{ .compatible = "nxp,pca9575",   .data = &chips[pca9575] },
+	{ .compatible = "nxp,pca9698",   .data = &chips[pca9698] },
+	{ .compatible = "maxim,max7310", .data = &chips[max7310] },
+	{ .compatible = "maxim,max7312", .data = &chips[max7312] },
+	{ .compatible = "maxim,max7313", .data = &chips[max7313] },
+	{ .compatible = "maxim,max7315", .data = &chips[max7315] },
+	{ .compatible = "ti,pca6107",    .data = &chips[pca6107] },
+	{ .compatible = "ti,tca6408",    .data = &chips[tca6408] },
+	{ .compatible = "ti,tca6416",    .data = &chips[tca6416] },
+	{ .compatible = "ti,tca6424",    .data = &chips[tca6424] },
+	{ .compatible = "exar,xra1202",  .data = &chips[xra1202] },
+	{ }
+};
+MODULE_DEVICE_TABLE(of, pca953x_of_match);
 
 #define MAX_BANK 5
 #define BANK_SZ 8
@@ -94,7 +184,7 @@ struct pca953x_chip {
 	struct i2c_client *client;
 	struct gpio_chip gpio_chip;
 	const char *const *names;
-	int	chip_type;
+	const struct pca953x_desc *desc;
 };
 
 static inline struct pca953x_chip *to_pca(struct gpio_chip *gc)
@@ -151,12 +241,12 @@ static int pca953x_write_regs(struct pca953x_chip *chip, int reg, u8 *val)
 					(reg << bank_shift) | REG_ADDR_AI,
 					NBANK(chip), val);
 	} else {
-		switch (chip->chip_type) {
-		case PCA953X_TYPE:
+		switch (chip->desc->subtype) {
+		case pca953x:
 			ret = i2c_smbus_write_word_data(chip->client,
 							reg << 1, (u16) *val);
 			break;
-		case PCA957X_TYPE:
+		case pca957x:
 			ret = i2c_smbus_write_byte_data(chip->client, reg << 1,
 							val[0]);
 			if (ret < 0)
@@ -211,11 +301,11 @@ static int pca953x_gpio_direction_input(struct gpio_chip *gc, unsigned off)
 	mutex_lock(&chip->i2c_lock);
 	reg_val = chip->reg_direction[off / BANK_SZ] | (1u << (off % BANK_SZ));
 
-	switch (chip->chip_type) {
-	case PCA953X_TYPE:
+	switch (chip->desc->subtype) {
+	case pca953x:
 		offset = PCA953X_DIRECTION;
 		break;
-	case PCA957X_TYPE:
+	case pca957x:
 		offset = PCA957X_CFG;
 		break;
 	}
@@ -246,11 +336,11 @@ static int pca953x_gpio_direction_output(struct gpio_chip *gc,
 		reg_val = chip->reg_output[off / BANK_SZ]
 			& ~(1u << (off % BANK_SZ));
 
-	switch (chip->chip_type) {
-	case PCA953X_TYPE:
+	switch (chip->desc->subtype) {
+	case pca953x:
 		offset = PCA953X_OUTPUT;
 		break;
-	case PCA957X_TYPE:
+	case pca957x:
 		offset = PCA957X_OUT;
 		break;
 	}
@@ -262,11 +352,11 @@ static int pca953x_gpio_direction_output(struct gpio_chip *gc,
 
 	/* then direction */
 	reg_val = chip->reg_direction[off / BANK_SZ] & ~(1u << (off % BANK_SZ));
-	switch (chip->chip_type) {
-	case PCA953X_TYPE:
+	switch (chip->desc->subtype) {
+	case pca953x:
 		offset = PCA953X_DIRECTION;
 		break;
-	case PCA957X_TYPE:
+	case pca957x:
 		offset = PCA957X_CFG;
 		break;
 	}
@@ -288,11 +378,11 @@ static int pca953x_gpio_get_value(struct gpio_chip *gc, unsigned off)
 	int ret, offset = 0;
 
 	mutex_lock(&chip->i2c_lock);
-	switch (chip->chip_type) {
-	case PCA953X_TYPE:
+	switch (chip->desc->subtype) {
+	case pca953x:
 		offset = PCA953X_INPUT;
 		break;
-	case PCA957X_TYPE:
+	case pca957x:
 		offset = PCA957X_IN;
 		break;
 	}
@@ -323,11 +413,11 @@ static void pca953x_gpio_set_value(struct gpio_chip *gc, unsigned off, int val)
 		reg_val = chip->reg_output[off / BANK_SZ]
 			& ~(1u << (off % BANK_SZ));
 
-	switch (chip->chip_type) {
-	case PCA953X_TYPE:
+	switch (chip->desc->subtype) {
+	case pca953x:
 		offset = PCA953X_OUTPUT;
 		break;
-	case PCA957X_TYPE:
+	case pca957x:
 		offset = PCA957X_OUT;
 		break;
 	}
@@ -452,11 +542,11 @@ static bool pca953x_irq_pending(struct pca953x_chip *chip, u8 *pending)
 	u8 trigger[MAX_BANK];
 	int ret, i, offset = 0;
 
-	switch (chip->chip_type) {
-	case PCA953X_TYPE:
+	switch (chip->desc->subtype) {
+	case pca953x:
 		offset = PCA953X_INPUT;
 		break;
-	case PCA957X_TYPE:
+	case pca957x:
 		offset = PCA957X_IN;
 		break;
 	}
@@ -517,20 +607,18 @@ static irqreturn_t pca953x_irq_handler(int irq, void *devid)
 }
 
 static int pca953x_irq_setup(struct pca953x_chip *chip,
-			     const struct i2c_device_id *id,
 			     int irq_base)
 {
 	struct i2c_client *client = chip->client;
 	int ret, i, offset = 0;
 
-	if (client->irq && irq_base != -1
-			&& (id->driver_data & PCA_INT)) {
-
-		switch (chip->chip_type) {
-		case PCA953X_TYPE:
+	if (client->irq && irq_base != -1 &&
+	    (chip->desc->features & pca953x_interrupt))
+		switch (chip->desc->subtype) {
+		case pca953x:
 			offset = PCA953X_INPUT;
 			break;
-		case PCA957X_TYPE:
+		case pca957x:
 			offset = PCA957X_IN;
 			break;
 		}
@@ -581,12 +669,11 @@ static int pca953x_irq_setup(struct pca953x_chip *chip,
 
 #else /* CONFIG_GPIO_PCA953X_IRQ */
 static int pca953x_irq_setup(struct pca953x_chip *chip,
-			     const struct i2c_device_id *id,
 			     int irq_base)
 {
 	struct i2c_client *client = chip->client;
 
-	if (irq_base != -1 && (id->driver_data & PCA_INT))
+	if (irq_base != -1 && (chip->desc->features & pca953x_interrupt))
 		dev_warn(&client->dev, "interrupt support not compiled in\n");
 
 	return 0;
@@ -647,7 +734,7 @@ out:
 }
 
 static int pca953x_probe(struct i2c_client *client,
-				   const struct i2c_device_id *id)
+			 const struct i2c_device_id *id)
 {
 	struct pca953x_platform_data *pdata;
 	struct pca953x_chip *chip;
@@ -655,8 +742,7 @@ static int pca953x_probe(struct i2c_client *client,
 	int ret;
 	u32 invert = 0;
 
-	chip = devm_kzalloc(&client->dev,
-			sizeof(struct pca953x_chip), GFP_KERNEL);
+	chip = devm_kzalloc(&client->dev, sizeof(*chip), GFP_KERNEL);
 	if (chip == NULL)
 		return -ENOMEM;
 
@@ -671,18 +757,33 @@ static int pca953x_probe(struct i2c_client *client,
 		irq_base = 0;
 	}
 
-	chip->client = client;
+	if (id) {
+		chip->desc = &chips[id->driver_data];
+	} else if(has_acpi_companion(&client->dev)) {
+		const struct of_device_id *of_id;
 
-	chip->chip_type = id->driver_data & (PCA953X_TYPE | PCA957X_TYPE);
+		of_id = acpi_of_match_device(
+			client->dev.driver->of_match_table,
+			&client->dev);
+		if (of_id)
+			chip->desc = of_id->data;
+	}
+
+	if (!chip->desc) {
+		dev_err(&client->dev, "unable to determine chip type\n");
+		return -ENODEV;
+	}
+
+	chip->client = client;
 
 	mutex_init(&chip->i2c_lock);
 
 	/* initialize cached registers from their original values.
 	 * we can't share this chip with another i2c master.
 	 */
-	pca953x_setup_gpio(chip, id->driver_data & PCA_GPIO_MASK);
+	pca953x_setup_gpio(chip, chip->desc->ngpio);
 
-	if (chip->chip_type == PCA953X_TYPE)
+	if (chip->desc->subtype == pca953x)
 		ret = device_pca953x_init(chip, invert);
 	else
 		ret = device_pca957x_init(chip, invert);
@@ -693,7 +794,7 @@ static int pca953x_probe(struct i2c_client *client,
 	if (ret)
 		return ret;
 
-	ret = pca953x_irq_setup(chip, id, irq_base);
+	ret = pca953x_irq_setup(chip, irq_base);
 	if (ret)
 		return ret;
 
@@ -705,6 +806,7 @@ static int pca953x_probe(struct i2c_client *client,
 	}
 
 	i2c_set_clientdata(client, chip);
+
 	return 0;
 }
 
@@ -729,42 +831,10 @@ static int pca953x_remove(struct i2c_client *client)
 	return 0;
 }
 
-static const struct of_device_id pca953x_dt_ids[] = {
-	{ .compatible = "nxp,pca9505", },
-	{ .compatible = "nxp,pca9534", },
-	{ .compatible = "nxp,pca9535", },
-	{ .compatible = "nxp,pca9536", },
-	{ .compatible = "nxp,pca9537", },
-	{ .compatible = "nxp,pca9538", },
-	{ .compatible = "nxp,pca9539", },
-	{ .compatible = "nxp,pca9554", },
-	{ .compatible = "nxp,pca9555", },
-	{ .compatible = "nxp,pca9556", },
-	{ .compatible = "nxp,pca9557", },
-	{ .compatible = "nxp,pca9574", },
-	{ .compatible = "nxp,pca9575", },
-	{ .compatible = "nxp,pca9698", },
-
-	{ .compatible = "maxim,max7310", },
-	{ .compatible = "maxim,max7312", },
-	{ .compatible = "maxim,max7313", },
-	{ .compatible = "maxim,max7315", },
-
-	{ .compatible = "ti,pca6107", },
-	{ .compatible = "ti,tca6408", },
-	{ .compatible = "ti,tca6416", },
-	{ .compatible = "ti,tca6424", },
-
-	{ .compatible = "exar,xra1202", },
-	{ }
-};
-
-MODULE_DEVICE_TABLE(of, pca953x_dt_ids);
-
 static struct i2c_driver pca953x_driver = {
 	.driver = {
 		.name	= "pca953x",
-		.of_match_table = pca953x_dt_ids,
+		.of_match_table = pca953x_of_match,
 	},
 	.probe		= pca953x_probe,
 	.remove		= pca953x_remove,
