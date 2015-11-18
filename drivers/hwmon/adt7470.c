@@ -1281,10 +1281,17 @@ static const struct i2c_device_id adt7470_id[] = {
 };
 MODULE_DEVICE_TABLE(i2c, adt7470_id);
 
+static const struct of_device_id adt7470_of_match[] = {
+	{ .compatible = "adi,adt7470" },
+	{ }
+};
+MODULE_DEVICE_TABLE(of, adt7470_of_match);
+
 static struct i2c_driver adt7470_driver = {
 	.class		= I2C_CLASS_HWMON,
 	.driver = {
 		.name	= "adt7470",
+		.of_match_table = adt7470_of_match,
 	},
 	.probe		= adt7470_probe,
 	.remove		= adt7470_remove,
