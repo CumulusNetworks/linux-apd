@@ -54,9 +54,19 @@ config SFF
 	  This support can also be built as a module.  If so, the module
 	  will be called sff.
 
+config SFF_TWI
+	tristate "Small Form Factor Pluggable Serial Interface Support"
+	depends on SFF
+	default n
+	help
+	  Provides access to the two-wire serial interface of a SFF module.
+
+	  This support can also be built as a module.  If so, the module
+	  will be called sff-twi.
+
 config SFF_FW
 	tristate "Firmware Defined Small Form Factor Pluggable Transceiver Driver"
-	depends on SFF
+	depends on SFF_TWI
 	default n
 	help
 	  Support for firmware-backed (OF or ACPI) SFF transcievers.
