@@ -54,7 +54,6 @@ enum pca_type {
 	pca_9543,
 	pca_9544,
 	pca_9545,
-	pca_9546,
 	pca_9547,
 	pca_9548,
 };
@@ -125,7 +124,11 @@ static const struct of_device_id pca954x_of_match[] = {
 	{ .compatible = "nxp,pca9543", .data = &chips[pca_9543] },
 	{ .compatible = "nxp,pca9544", .data = &chips[pca_9544] },
 	{ .compatible = "nxp,pca9545", .data = &chips[pca_9545] },
-	{ .compatible = "nxp,pca9546", .data = &chips[pca_9546] },
+	/*
+	 * The pca9546 is a pca9545 but with built in resistors.  The software
+	 * interface is identical.
+	 */
+	{ .compatible = "nxp,pca9546", .data = &chips[pca_9545] },
 	{ .compatible = "nxp,pca9547", .data = &chips[pca_9547] },
 	{ .compatible = "nxp,pca9548", .data = &chips[pca_9548] },
 	{ }
