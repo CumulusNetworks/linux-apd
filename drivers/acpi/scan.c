@@ -1828,6 +1828,7 @@ int acpi_bus_scan(acpi_handle handle)
 				    acpi_bus_check_add, NULL, NULL, &device);
 
 	if (device) {
+		while(acpi_property_add_deferred() > 0);
 		acpi_bus_attach(device);
 		return 0;
 	}

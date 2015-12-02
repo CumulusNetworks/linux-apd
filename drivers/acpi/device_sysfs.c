@@ -26,6 +26,15 @@
 
 #include "internal.h"
 
+static LIST_HEAD(acpi_deferred_property_list);
+struct acpi_deferred_property_link {
+	struct acpi_device *adev;
+	char *propname;
+	int idx;
+	char *sysfs_name;
+	struct list_head list;
+};
+
 static ssize_t acpi_object_path(acpi_handle handle, char *buf)
 {
 	struct acpi_buffer path = {ACPI_ALLOCATE_BUFFER, NULL};
@@ -628,10 +637,50 @@ static int acpi_property_create_file(struct acpi_device *adev,
 	return 0;
 }
 
-static int acpi_property_create_attr(struct acpi_device *adev,
-				     const union acpi_object *property)
+int acpi_property_add_deferred(void)
+{
+	struct acpi_deferred_property_link *link, *tmp;
+	int resolved = 0;
+	int scanned = 0;
+
+	if (list_empty(&acpi_deferred_property_list))
+		return 0;
+
+	list_for_each_entry_safe(link, tmp, &acpi_deferred_property_list, list) {
+		struct acpi_reference_args args;
+		int err;
+
+	        err = acpi_node_get_property_reference(acpi_fwnode_handle(link->adev),
+						       link->propname,
+						       link->idx,
+						       &args);
+		if (err)
+			return -ENODEV;
+
+		err = sysfs_create_link(&link->adev->data.kobj,
+					&args.adev->dev.kobj,
+					link->sysfs_name);
+		if (err == 0) {
+			dev_warn(&link->adev->dev,
+				 "created deferred property link: %s\n",
+				 link->sysfs_name);
+			list_del(&link->list);
+			devm_kfree(&link->adev->dev, link);
+			resolved++;
+		}
+		scanned++;
+	}
+
+	printk("acpi: resolved %d of %d deferred property links\n", resolved, scanned);
+
+	return resolved;
+}
+
+static int acpi_property_add(struct acpi_device *adev,
+			     const union acpi_object *property)
 {
 	struct acpi_reference_args args;
+	bool defer = false;
 	char *propname;
 	int err;
 	int idx;
@@ -639,9 +688,32 @@ static int acpi_property_create_attr(struct acpi_device *adev,
 	propname = property->package.elements[0].string.pointer;
 
 	idx = 0;
-	while (acpi_node_get_property_reference(acpi_fwnode_handle(adev),
-						propname, idx, &args) == 0) {
+	while (true) {
 		char *sysfs_name;
+
+	        err = acpi_node_get_property_reference(acpi_fwnode_handle(adev),
+						       propname, idx, &args);
+		if (err) {
+			/*
+			 * To defer:
+			 * ENODEV, the device doesn't exist yet
+			 *
+			 * Treat as not a reference:
+			 * EPROTO, this is not a property ref
+			 * EINVAL, the ref at idx does not exist
+			 */
+			if (err == -ENODEV) {
+				defer = true;
+			} else if (err != -EPROTO && err != -EINVAL) {
+				dev_warn(&adev->dev,
+					 "unknown error in property add for %s, "
+					 "err: 0x%x\n",
+					 propname, err);
+				return err;
+			} else {
+				break;
+			}
+		}
 
 		if (idx == 0)
 			sysfs_name = devm_kasprintf(&adev->dev, GFP_KERNEL,
@@ -652,12 +724,33 @@ static int acpi_property_create_attr(struct acpi_device *adev,
 		if (!sysfs_name)
 			return -ENOMEM;
 
-		err = sysfs_create_link(&adev->data.kobj, &args.adev->dev.kobj,
+		if (defer) {
+			struct acpi_deferred_property_link *link;
+
+			dev_warn(&adev->dev, "deferring property add for %s\n",
+				 propname);
+
+			link = devm_kmalloc(&adev->dev, sizeof(*link), GFP_KERNEL);
+			if (!link) {
+				dev_err(&adev->dev, "falled to allocate memory\n");
+				return -ENOMEM;
+			}
+
+			link->adev = adev;
+			link->propname = propname;
+			link->idx = idx;
+			link->sysfs_name = sysfs_name;
+
+			list_add_tail(&link->list, &acpi_deferred_property_list);
+		} else {
+			err = sysfs_create_link(&adev->data.kobj, &args.adev->dev.kobj,
+						sysfs_name);
+			if (err)
+				dev_err(&adev->dev,
+					"failed to create property link: %s\n",
 					sysfs_name);
-		if (err)
-			dev_err(&adev->dev,
-				"failed to create property link: %s\n",
-				sysfs_name);
+		}
+
 		if (args.nargs > 0) {
 			char *sysfs_args_name;
 
@@ -672,7 +765,7 @@ static int acpi_property_create_attr(struct acpi_device *adev,
 		idx++;
 	}
 
-	if (idx == 0)
+	if (idx == 0 && err == -EPROTO)
 		acpi_property_create_file(adev, propname, propname, -1);
 
 	return 0;
@@ -741,7 +834,7 @@ static int acpi_add_properties(struct acpi_device *adev)
 		const union acpi_object *property;
 
 		property = &properties->package.elements[i];
-		err = acpi_property_create_attr(adev, property);
+		err = acpi_property_add(adev, property);
 		if (err)
 			return err;
 	}
