@@ -82,8 +82,13 @@ static const struct i2c_device_id pca9541_id[] = {
 	{"pca9541", 0},
 	{}
 };
-
 MODULE_DEVICE_TABLE(i2c, pca9541_id);
+
+static const struct of_device_id pca9541_of_match[] = {
+	{ .compatible = "nxp,pca9541" },
+	{}
+};
+MODULE_DEVICE_TABLE(of, pca9541_of_match);
 
 /*
  * Write to chip register. Don't use i2c_transfer()/i2c_smbus_xfer()
@@ -386,6 +391,7 @@ static int pca9541_remove(struct i2c_client *client)
 static struct i2c_driver pca9541_driver = {
 	.driver = {
 		   .name = "pca9541",
+		   .of_match_table = pca9541_of_match,
 		   },
 	.probe = pca9541_probe,
 	.remove = pca9541_remove,
