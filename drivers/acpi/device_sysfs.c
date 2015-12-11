@@ -650,12 +650,13 @@ int acpi_property_add_deferred(void)
 		struct acpi_reference_args args;
 		int err;
 
+		scanned++;
 	        err = acpi_node_get_property_reference(acpi_fwnode_handle(link->adev),
 						       link->propname,
 						       link->idx,
 						       &args);
 		if (err)
-			return -ENODEV;
+			continue;
 
 		err = sysfs_create_link(&link->adev->data.kobj,
 					&args.adev->dev.kobj,
@@ -668,7 +669,6 @@ int acpi_property_add_deferred(void)
 			devm_kfree(&link->adev->dev, link);
 			resolved++;
 		}
-		scanned++;
 	}
 
 	printk("acpi: resolved %d of %d deferred property links\n", resolved, scanned);
@@ -704,14 +704,14 @@ static int acpi_property_add(struct acpi_device *adev,
 			 */
 			if (err == -ENODEV) {
 				defer = true;
-			} else if (err != -EPROTO && err != -EINVAL) {
+			} else if (err == -EPROTO || err == -EINVAL) {
+				break;
+			} else {
 				dev_warn(&adev->dev,
-					 "unknown error in property add for %s, "
+					 "unhandled error in property add for %s, "
 					 "err: 0x%x\n",
 					 propname, err);
 				return err;
-			} else {
-				break;
 			}
 		}
 
@@ -727,8 +727,8 @@ static int acpi_property_add(struct acpi_device *adev,
 		if (defer) {
 			struct acpi_deferred_property_link *link;
 
-			dev_warn(&adev->dev, "deferring property add for %s\n",
-				 propname);
+			dev_warn(&adev->dev, "deferring property add for ref %s "
+			                     "at index %d\n", propname, idx);
 
 			link = devm_kmalloc(&adev->dev, sizeof(*link), GFP_KERNEL);
 			if (!link) {
