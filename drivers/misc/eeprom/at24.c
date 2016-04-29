@@ -133,7 +133,7 @@ MODULE_DEVICE_TABLE(i2c, at24_ids);
 
 static const struct of_device_id at24_of_match[] = {
 	{ .compatible = "atmel,at24" },
-	{ .compatible = "sff,twi" },
+	{ .compatible = "sff-twi" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, at24_of_match);
