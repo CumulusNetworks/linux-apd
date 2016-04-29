@@ -220,7 +220,10 @@ static int pca954x_probe(struct i2c_client *client,
 	/* Get the mux out of reset if a reset GPIO is specified. */
 	gpio = devm_gpiod_get_optional(&client->dev, "reset", GPIOD_OUT_LOW);
 	if (IS_ERR(gpio))
-		return PTR_ERR(gpio);
+        {
+		//return PTR_ERR(gpio);
+            printk("Not get GPIO reset resource\n");
+        }
 
 	/* Write the mux register at addr to verify
 	 * that the mux is in fact present. This also

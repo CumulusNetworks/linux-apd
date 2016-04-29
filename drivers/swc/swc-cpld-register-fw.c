@@ -81,7 +81,62 @@ static ssize_t register_show(struct device *dev,
 	return -ENODEV;
 }
 
+static ssize_t register_store(struct device *dev,
+			     struct device_attribute *dattr,
+			     const char *buf, size_t count)
+{
+    struct swc_cpld_register_data *data = dev_get_drvdata(dev);
+    struct regmap *regmap;
+    ssize_t			status;
+    char property_name[128];
+    int reg;
+
+    swc_fw_util_sysfs_to_property(dattr->attr.name, property_name,
+				      sizeof property_name);
+
+    for (reg = 0; reg < data->num_offsets; reg++) {
+        int val;
+        int err;
+
+        if (strcmp(property_name, data->names[reg]) != 0)
+            continue;
+
+
+        status = kstrtoint(buf, 0, &val);
+        if (status != 0) {
+            return -ENODEV;
+		    }
+        status = count;
+
+
+        regmap = swc_cpld_get_regmap(data->cpld);
+        if (!regmap)
+            return -ENODEV;
+
+        err=  regmap_write(regmap, data->offsets[reg],val);
+
+        swc_cpld_put_regmap(data->cpld, regmap);
+        if (err)
+            return err;
+
+        val &= data->valid_masks[reg];
+
+        return status;
+    }
+
+    return -ENODEV;
+}
+
 DEVICE_ATTR(test, 0444, register_show, NULL);
+
+int swc_cpld_register_mask_get(struct device *dev, int reg, int *mask)
+{
+    struct swc_cpld_register_data *data = dev_get_drvdata(dev);
+
+	*mask=data->valid_masks[reg];
+	return 0;
+}
+EXPORT_SYMBOL(swc_cpld_register_mask_get);
 
 int swc_cpld_register_get(struct device *dev, int reg, int *out)
 {
@@ -108,7 +163,7 @@ int swc_cpld_register_set(struct device *dev, int reg, int val)
 {
 	struct swc_cpld_register_data *data = dev_get_drvdata(dev);
 	struct regmap *regmap;
-	int err;
+	int err, ori_val;
 
 	if (data->writable_masks[reg] != 0xff) {
 		dev_err(dev, "partially writable registers not implemented\n");
@@ -118,9 +173,12 @@ int swc_cpld_register_set(struct device *dev, int reg, int val)
 	regmap = swc_cpld_get_regmap(data->cpld);
 	if (!regmap)
 		return -ENODEV;
-
-	err = regmap_write(regmap, data->offsets[reg],
-			   val & data->valid_masks[reg]);
+        err = regmap_read(regmap, data->offsets[reg], &ori_val);
+  
+        ori_val=ori_val & (~(data->valid_masks[reg])); 
+	err |= regmap_write(regmap, data->offsets[reg],
+			                 (val | ori_val) );
+  
 	swc_cpld_put_regmap(data->cpld, regmap);
 	if (err)
 		return err;
@@ -227,8 +285,13 @@ static int swc_cpld_register_probe(struct platform_device *pdev)
 		dev_attr = &data->attrs[num];
 		sysfs_attr_init(&dev_attr->attr);
 		dev_attr->show = register_show;
+		dev_attr->store = register_store;
 		dev_attr->attr.name = sysfs_name;
 		dev_attr->attr.mode = 0444;
+		if(props & SWC_CPLD_WRITEABLE)
+		{
+		    dev_attr->attr.mode|=S_IWUGO;
+		}
 
 		err = sysfs_create_file(&pdev->dev.kobj, &dev_attr->attr);
 		if (err) {

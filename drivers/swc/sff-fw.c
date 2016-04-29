@@ -30,6 +30,8 @@
 #include <linux/init.h>
 #include <linux/platform_device.h>
 #include <linux/gpio/consumer.h>
+#include <linux/swc/register.h>
+#include <linux/regmap.h>
 #include "swc-fw-util.h"
 
 MODULE_AUTHOR("Dustin Byford");
@@ -37,7 +39,21 @@ MODULE_DESCRIPTION("Firmware Defined Small Form Factor Pluggable Transceiver Dri
 MODULE_LICENSE("GPL");
 
 struct sff_fw_data {
+  struct device *dev;
 	struct device *twi;
+	struct device *qsfp_present;
+	int    qsfp_present_offset;
+	struct device *qsfp_tx_fault;
+	int    qsfp_tx_fault_offset;
+	struct device *qsfp_tx_enable;
+	int    qsfp_tx_enable_offset;
+	struct device *qsfp_rx_los;
+	int    qsfp_rx_los_offset;
+	struct device *qsfp_reset;
+	int    qsfp_reset_offset;
+	struct device *qsfp_module_select;
+	int    qsfp_module_select_offset;
+	
 	struct gpio_desc *present;
 	struct gpio_desc *tx_fault;
 	struct gpio_desc *tx_enable;
@@ -84,52 +100,45 @@ static struct gpio_desc *get_gpiod(struct sff_fw_data *data, const char *name)
 
 	return NULL;
 }
-
-static ssize_t set_gpio(struct device *dev, struct device_attribute *attr,
-			const char *buf, size_t count)
+static ssize_t show_qsfp_present(struct device *dev,
+			struct device_attribute *attr, char *buf)
 {
 	struct sff_fw_data *data = dev_get_drvdata(dev);
-	struct gpio_desc *gpiod;
-	unsigned long val;
+	struct swc_cpld_register_data *swc_data = dev_get_drvdata(data->qsfp_present);
+	int val;
+	int err;
+	int mask=0;
+	int check, shift=0;
 
-	gpiod = get_gpiod(data, attr->attr.name);
-	if (!gpiod) {
-		dev_err(dev, "failed to get gpiod for %s\n", attr->attr.name);
-		return -EINVAL;
+	err = swc_cpld_register_get(data->qsfp_present, data->qsfp_present_offset, &val);
+	if (err)
+	{
+		dev_err(dev, "failed to get fan present\n");
+		return -EFAULT;
+	}	
+	
+	err = swc_cpld_register_mask_get(data->qsfp_present, data->qsfp_present_offset, &mask);
+	if (err)
+	{
+		dev_err(dev, "failed to get fan present\n");
+		return -EFAULT;
 	}
-
-	if (kstrtoul(buf, 0, &val))
-		return -EINVAL;
-
-	gpiod_set_value(gpiod, !!val);
-
-	return count;
-}
-
-static ssize_t show_gpio(struct device *dev,
-			 struct device_attribute *attr, char *buf)
-{
-	struct sff_fw_data *data = dev_get_drvdata(dev);
-	struct gpio_desc *gpiod;
-	unsigned long val;
-
-	gpiod = get_gpiod(data, attr->attr.name);
-	if (!gpiod) {
-		dev_err(dev, "failed to get gpiod for %s\n", attr->attr.name);
-		return -EINVAL;
+	
+	for(shift=0;shift<8;shift++)
+	{
+	    check=mask&(1<<shift);
+	    if(check)
+	        break;
 	}
-
-	val = gpiod_get_value(gpiod);
-
-	return sprintf(buf, "%d\n", !!val);
+	val=val>>shift;
+	if(val==0)
+	    val=1;
+	else
+	    val=0;
+	   
+	return sprintf(buf, "%d\n", val);
 }
-
-static DEVICE_ATTR(present, S_IRUGO | S_IWUSR, show_gpio, set_gpio);
-static DEVICE_ATTR(tx_fault, S_IRUGO | S_IWUSR, show_gpio, set_gpio);
-static DEVICE_ATTR(tx_enable, S_IRUGO | S_IWUSR, show_gpio, set_gpio);
-static DEVICE_ATTR(rx_los, S_IRUGO | S_IWUSR, show_gpio, set_gpio);
-static DEVICE_ATTR(low_power, S_IRUGO | S_IWUSR, show_gpio, set_gpio);
-static DEVICE_ATTR(reset, S_IRUGO | S_IWUSR, show_gpio, set_gpio);
+static DEVICE_ATTR(present, S_IRUGO, show_qsfp_present, NULL);
 
 static int sff_fw_get_gpio(struct device *dev, const char *name,
 			   struct gpio_desc **dst)
@@ -160,56 +169,67 @@ static void sff_fw_add_attr(struct sff_fw_data *data,
 
 static int sff_fw_probe(struct platform_device *pdev)
 {
-	struct sff_fw_data *data;
-	int err;
+    struct sff_fw_data *data;
+    int err;
 
-	dev_info(&pdev->dev, "sff_fw_probe()\n");
+    dev_info(&pdev->dev, "sff_fw_probe()\n");
 
-	data = devm_kzalloc(&pdev->dev, sizeof *data, GFP_KERNEL);
-	if (!data)
-		return -ENOMEM;
+    data = devm_kzalloc(&pdev->dev, sizeof *data, GFP_KERNEL);
+    if (!data)
+        return -ENOMEM;
 
-	platform_set_drvdata(pdev, data);
+    platform_set_drvdata(pdev, data);
 
-	data->twi = swc_fw_util_get_ref_physical(&pdev->dev, "serial-interface");
-	if (PTR_ERR(data->twi) == -ENODEV)
-		return -EPROBE_DEFER;
-	else if (IS_ERR(data->twi))
-		return -ENODEV;
+    data->twi = swc_fw_util_get_ref_physical(&pdev->dev, "serial-interface");
+    if (PTR_ERR(data->twi) == -ENODEV)
+        return -EPROBE_DEFER;
+    else if (IS_ERR(data->twi))
+        return -ENODEV;
 
-	if (!get_device(data->twi))
-		return -ENODEV;
+    if (!get_device(data->twi))
+        return -ENODEV;
 
-	err = sysfs_create_link(&pdev->dev.kobj, &data->twi->kobj,
-				"serial-interface");
-	if (err)
-		goto fail;
+    err = sysfs_create_link(&pdev->dev.kobj, &data->twi->kobj,
+        "serial-interface");
+    if (err)
+        goto fail;
 
-	data->num_attrs = 0;
+    data->num_attrs = 0;
+    data->qsfp_present = swc_fw_util_get_ref_physical(&pdev->dev, "present");
+    if (PTR_ERR(data->qsfp_present) == -ENODEV) {	  
+        return -EPROBE_DEFER;
+    } else if (IS_ERR(data->qsfp_present)) {
+        data->qsfp_present = NULL;
+    } else {
+        struct acpi_reference_args ref;
+        u32 range[2];
 
-	err = sff_fw_get_gpio(&pdev->dev, "present", &data->present);
-	if (!err)
-		sff_fw_add_attr(data, &dev_attr_present.attr);
+        err = acpi_node_get_property_reference(
+        acpi_fwnode_handle(ACPI_COMPANION(&pdev->dev)),
+            "present", 0, &ref);
+        if (err) {
+            dev_err(&pdev->dev, "failed to get present device\n");
+            return -EINVAL;
+        }
+        if (ref.nargs > 1) {
+            dev_err(&pdev->dev, "too many args to 'present'\n");
+            return -EINVAL;
+        }    
 
-	err = sff_fw_get_gpio(&pdev->dev, "tx-fault", &data->tx_fault);
-	if (!err)
-		sff_fw_add_attr(data, &dev_attr_tx_fault.attr);
-
-	err = sff_fw_get_gpio(&pdev->dev, "tx-enable", &data->tx_enable);
-	if (!err)
-		sff_fw_add_attr(data, &dev_attr_tx_enable.attr);
-
-	err = sff_fw_get_gpio(&pdev->dev, "rx-los", &data->rx_los);
-	if (!err)
-		sff_fw_add_attr(data, &dev_attr_rx_los.attr);
-
-	err = sff_fw_get_gpio(&pdev->dev, "low-power", &data->low_power);
-	if (!err)
-		sff_fw_add_attr(data, &dev_attr_low_power.attr);
-
-	err = sff_fw_get_gpio(&pdev->dev, "reset", &data->reset);
-	if (!err)
-		sff_fw_add_attr(data, &dev_attr_reset.attr);
+        if (ref.nargs == 0)
+            data->qsfp_present_offset = 0;
+        else
+            data->qsfp_present_offset = ref.args[0];
+		
+    }
+	
+    data->dev = &pdev->dev;
+    platform_set_drvdata(pdev, data);
+    data->qsfp_present = get_device(data->qsfp_present);
+    platform_set_drvdata(pdev, data);
+	
+    if(data->qsfp_present)
+        sff_fw_add_attr(data, &dev_attr_present.attr);
 
 	if (data->num_attrs) {
 		data->sff_fw_attr_group.attrs = data->sff_fw_attrs;
@@ -224,8 +244,9 @@ static int sff_fw_probe(struct platform_device *pdev)
 	return 0;
 
 fail:
-	put_device(data->twi);
-	return err;
+    put_device(data->twi);
+    put_device(data->qsfp_present);
+    return err;
 }
 
 static int sff_fw_remove(struct platform_device *pdev)
