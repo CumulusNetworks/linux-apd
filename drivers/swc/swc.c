@@ -38,7 +38,15 @@ struct class swc_class = {
 	.name = "swc",
 	.owner = THIS_MODULE,
 };
+
+struct class swc_psu_class = {
+	.name = "swc-psu",
+	.owner = THIS_MODULE,
+};
+
 EXPORT_SYMBOL(swc_class);
+EXPORT_SYMBOL(swc_psu_class);
+
 
 DEFINE_IDA(swc_ida);
 
@@ -155,6 +163,13 @@ static int __init swc_init(void)
 
 	pr_info("swc: registered class\n");
 
+	err = class_register(&swc_psu_class);
+	if (err) {
+		pr_err("swc_psu: failed to create class\n");
+		return err;
+	}
+	pr_info("swc_psu: registered class\n");
+
 	return 0;
 }
 subsys_initcall(swc_init);
@@ -163,5 +178,9 @@ static void __exit swc_exit(void)
 {
 	class_unregister(&swc_class);
 	pr_info("swc: unregistered class\n");
+
+	class_unregister(&swc_psu_class);
+	pr_info("swc_psu: unregistered class\n");
+
 }
 module_exit(swc_exit);
