@@ -75,7 +75,7 @@ static int swc_cpld_i2c_mux_write(struct device *dev, u8 reg, u8 val)
 		err = adapter->algo->smbus_xfer(adapter, client->addr,
 						client->flags,
 						I2C_SMBUS_WRITE,
-						reg, I2C_SMBUS_BYTE, &data);
+						reg, I2C_SMBUS_BYTE_DATA, &data);
 	}
 
 	return err;
